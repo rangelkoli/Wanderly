@@ -13,6 +13,7 @@ import { useState } from "react";
 import { LoginForm } from "@/components/login";
 import { SignupForm } from "@/components/signup";
 import { Chat } from "./components/chat";
+import { BrowserRouter } from "react-router";
 
 export default function App() {
   return (
@@ -24,9 +25,6 @@ export default function App() {
         </div>
       </header>
       <main className="p-8 flex flex-col gap-16">
-        <h1 className="text-4xl font-bold text-center text-balance">
-          Convex + React + Convex Auth
-        </h1>
         <Authenticated>
           <Chat />
         </Authenticated>

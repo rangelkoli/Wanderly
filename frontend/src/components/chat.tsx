@@ -1,120 +1,334 @@
-import { useState, useRef, useEffect } from "react";
+"use client"
 import { useStream } from "@langchain/langgraph-sdk/react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+
+import { CheckIcon, GlobeIcon, MicIcon } from "lucide-react"
+import { useState } from "react"
+import { toast } from "sonner"
+import {
+  Attachment,
+  AttachmentPreview,
+  AttachmentRemove,
+  Attachments,
+} from "@/components/ai-elements/attachments"
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation"
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from "@/components/ai-elements/message"
+import {
+  Tool,
+  ToolContent,
+  ToolHeader,
+  ToolOutput,
+} from "@/components/ai-elements/tool"
+import { ReelEmbed } from "@/components/reel-embed"
+import {
+  ModelSelector,
+  ModelSelectorContent,
+  ModelSelectorEmpty,
+  ModelSelectorGroup,
+  ModelSelectorInput,
+  ModelSelectorItem,
+  ModelSelectorList,
+  ModelSelectorLogo,
+  ModelSelectorLogoGroup,
+  ModelSelectorName,
+  ModelSelectorTrigger,
+} from "@/components/ai-elements/model-selector"
+import {
+  PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
+  PromptInputBody,
+  PromptInputButton,
+  PromptInputFooter,
+  PromptInputHeader,
+  type PromptInputMessage,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
+  usePromptInputAttachments,
+} from "@/components/ai-elements/prompt-input"
+
+const models = [
+  {
+    id: "gpt-4o",
+    name: "GPT-4o",
+    chef: "OpenAI",
+    chefSlug: "openai",
+    providers: ["openai", "azure"],
+  },
+  {
+    id: "gpt-4o-mini",
+    name: "GPT-4o Mini",
+    chef: "OpenAI",
+    chefSlug: "openai",
+    providers: ["openai", "azure"],
+  },
+  {
+    id: "claude-opus-4-20250514",
+    name: "Claude 4 Opus",
+    chef: "Anthropic",
+    chefSlug: "anthropic",
+    providers: ["anthropic", "azure", "google", "amazon-bedrock"],
+  },
+  {
+    id: "claude-sonnet-4-20250514",
+    name: "Claude 4 Sonnet",
+    chef: "Anthropic",
+    chefSlug: "anthropic",
+    providers: ["anthropic", "azure", "google", "amazon-bedrock"],
+  },
+  {
+    id: "gemini-2.0-flash-exp",
+    name: "Gemini 2.0 Flash",
+    chef: "Google",
+    chefSlug: "google",
+    providers: ["google"],
+  },
+]
+
+// const suggestions = [
+//   "What are the latest trends in AI?",
+//   "How does machine learning work?",
+//   "Explain quantum computing",
+//   "Best practices for React development",
+//   "Tell me about TypeScript benefits",
+//   "How to optimize database queries?",
+//   "What is the difference between SQL and NoSQL?",
+//   "Explain cloud computing basics",
+// ]
+
+const mockResponses = [
+  "That's a great question! Let me help you understand this concept better. The key thing to remember is that proper implementation requires careful consideration of the underlying principles and best practices in the field.",
+  "I'd be happy to explain this topic in detail. From my understanding, there are several important factors to consider when approaching this problem. Let me break it down step by step for you.",
+  "This is an interesting topic that comes up frequently. The solution typically involves understanding the core concepts and applying them in the right context. Here's what I recommend...",
+  "Great choice of topic! This is something that many developers encounter. The approach I'd suggest is to start with the fundamentals and then build up to more complex scenarios.",
+  "That's definitely worth exploring. From what I can see, the best way to handle this is to consider both the theoretical aspects and practical implementation details.",
+]
+
+const PromptInputAttachmentsDisplay = () => {
+  const attachments = usePromptInputAttachments()
+
+  if (attachments.files.length === 0) {
+    return null
+  }
+
+  return (
+    <Attachments variant="inline">
+      {attachments.files.map(attachment => (
+        <Attachment
+          data={attachment}
+          key={attachment.id}
+          onRemove={() => attachments.remove(attachment.id)}
+        >
+          <AttachmentPreview />
+          <AttachmentRemove />
+        </Attachment>
+      ))}
+    </Attachments>
+  )
+}
 
 export function Chat() {
+  const [model, setModel] = useState<string>(models[0].id)
+  const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
+  const [text, setText] = useState<string>("")
+  const [useWebSearch, setUseWebSearch] = useState<boolean>(false)
+  const [useMicrophone, setUseMicrophone] = useState<boolean>(false)
+  
   const stream = useStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
   });
+  
+  const selectedModelData = models.find(m => m.id === model)
 
-  const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const handleSubmit = async (message: PromptInputMessage) => {
+    const hasText = Boolean(message.text)
+    const hasAttachments = Boolean(message.files?.length)
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [stream.messages]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim()) return;
-    void stream.submit({ messages: [{ content: input, type: "human" }] });
-    setInput("");
-  };
-
-  const renderContent = (content: unknown): string => {
-    if (typeof content === "string") return content;
-    if (Array.isArray(content)) {
-      return content
-        .map((item) => ("text" in item ? item.text : JSON.stringify(item)))
-        .join("");
+    if (!(hasText || hasAttachments)) {
+      return
     }
-    return String(content);
-  };
 
-  const isUserMessage = (type: string) => type === "human";
+    setText("")
+
+    if (message.files?.length) {
+      toast.success("Files attached", {
+        description: `${message.files.length} file(s) attached to message`,
+      })
+    }
+
+    await stream.submit({
+      messages: [{ content: message.text, type: "human" }],
+    });
+  }
+  console.log("Stream status:", stream.messages)
 
   return (
-    <div className="flex min-h-dvh flex-col bg-slate-50 p-4 dark:bg-slate-900">
-      <Card className="flex flex-1 flex-col overflow-hidden">
-        <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
-          {stream.messages.length === 0 && !stream.isLoading && (
-            <div className="flex h-full items-center justify-center text-slate-500 dark:text-slate-400">
-              <p className="text-sm">Start a conversation...</p>
-            </div>
-          )}
-
-          {stream.messages.map((message, idx) => (
-            <div
-              key={message.id ?? idx}
-              className={cn(
-                "flex",
-                isUserMessage(message.type) ? "justify-end" : "justify-start",
-              )}
-            >
-              <div
-                className={cn(
-                  "max-w-[80%] rounded-lg px-4 py-2 text-sm",
-                  isUserMessage(message.type)
-                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                    : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100",
-                )}
-              >
-                <p className="text-balance whitespace-pre-wrap">
-                  {renderContent(message.content)}
-                </p>
-              </div>
-            </div>
-          ))}
-
-          {stream.isLoading && (
-            <div className="flex justify-start">
-              <div className="flex gap-1 rounded-lg bg-slate-100 px-4 py-3 dark:bg-slate-800">
-                <span className="size-2 animate-bounce rounded-full bg-slate-400" />
-                <span
-                  className="size-2 animate-bounce rounded-full bg-slate-400"
-                  style={{ animationDelay: "100ms" }}
-                />
-                <span
-                  className="size-2 animate-bounce rounded-full bg-slate-400"
-                  style={{ animationDelay: "200ms" }}
-                />
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </CardContent>
-
-        <CardFooter className="flex flex-col gap-2 border-t-2 border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-          {stream.error ? (
-            <p className="w-full text-sm text-red-500" role="alert">
-              {stream.error instanceof Error
-                ? stream.error.message
-                : JSON.stringify(stream.error)}
-            </p>
-          ) : null}
-          <form
-            onSubmit={handleSubmit}
-            className="flex w-full gap-2"
-            aria-label="Chat message form"
-          >
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your message..."
-              className="flex-1"
-              aria-label="Message input"
+    <div className="fixed inset-0 flex flex-col overflow-hidden pt-16">
+      <Conversation className="min-h-0 flex-1 border-b">
+        <ConversationContent>
+          {stream.messages.map((msg) => {
+            const isUser = msg.type === "human"
+            
+            if (msg.type === "tool") {
+              const toolContent = msg.content as string
+              return (
+                <Message key={msg.id} from="tool">
+                  <Tool>
+                    <ToolHeader 
+                      title={msg.name || "Tool"} 
+                      type="tool-invocation" 
+                      state={msg.status === "error" ? "output-error" : "output-available"} 
+                    />
+                    <ToolContent>
+                      <ToolOutput 
+                        output={toolContent} 
+                        errorText={msg.status === "error" ? toolContent : undefined} 
+                      />
+                    </ToolContent>
+                  </Tool>
+                </Message>
+              )
+            }
+            
+            const content = Array.isArray(msg.content) 
+              ? msg.content.map((c: any) => c.text || c.content || JSON.stringify(c)).join("")
+              : msg.content || ""
+            
+            const instagramLinks = content.match(/https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g) || []
+            const contentWithoutLinks = content.replace(/https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g, "").trim()
+            
+            return (
+              <Message key={msg.id} from={isUser ? "user" : "assistant"}>
+                <MessageContent>
+                  {contentWithoutLinks && <MessageResponse>{contentWithoutLinks}</MessageResponse>}
+                  {instagramLinks.map((link, idx) => (
+                    <ReelEmbed key={`${link}-${idx}`} url={link} />
+                  ))}
+                </MessageContent>
+              </Message>
+            )
+          })}
+          {stream.isLoading ? (
+            <Message from="assistant">
+              <MessageContent>
+                <MessageResponse>Thinking...</MessageResponse>
+              </MessageContent>
+            </Message>
+          )
+        :null
+        }
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
+      <div className="shrink-0 space-y-4 pt-4">
+        {/* <Suggestions className="px-4">
+          {suggestions.map(suggestion => (
+            <Suggestion
+              key={suggestion}
+              onClick={() => handleSuggestionClick(suggestion)}
+              suggestion={suggestion}
             />
-            <Button type="submit" disabled={!input.trim() || stream.isLoading}>
-              Send
-            </Button>
-          </form>
-        </CardFooter>
-      </Card>
+          ))}
+        </Suggestions> */}
+        <div className="w-full px-4 pb-4">
+          <PromptInput globalDrop multiple onSubmit={handleSubmit}>
+            <PromptInputHeader>
+              <PromptInputAttachmentsDisplay />
+            </PromptInputHeader>
+            <PromptInputBody>
+              <PromptInputTextarea onChange={event => setText(event.target.value)} value={text} />
+            </PromptInputBody>
+            <PromptInputFooter>
+              <PromptInputTools>
+                <PromptInputActionMenu>
+                  <PromptInputActionMenuTrigger />
+                  <PromptInputActionMenuContent>
+                    <PromptInputActionAddAttachments />
+                  </PromptInputActionMenuContent>
+                </PromptInputActionMenu>
+                <PromptInputButton
+                  onClick={() => setUseMicrophone(!useMicrophone)}
+                  variant={useMicrophone ? "default" : "ghost"}
+                >
+                  <MicIcon size={16} />
+                  <span className="sr-only">Microphone</span>
+                </PromptInputButton>
+                <PromptInputButton
+                  onClick={() => setUseWebSearch(!useWebSearch)}
+                  variant={useWebSearch ? "default" : "ghost"}
+                >
+                  <GlobeIcon size={16} />
+                  <span>Search</span>
+                </PromptInputButton>
+                <ModelSelector onOpenChange={setModelSelectorOpen} open={modelSelectorOpen}>
+                  <ModelSelectorTrigger asChild>
+                    <PromptInputButton>
+                      {selectedModelData?.chefSlug && (
+                        <ModelSelectorLogo provider={selectedModelData.chefSlug} />
+                      )}
+                      {selectedModelData?.name && (
+                        <ModelSelectorName>{selectedModelData.name}</ModelSelectorName>
+                      )}
+                    </PromptInputButton>
+                  </ModelSelectorTrigger>
+                  <ModelSelectorContent>
+                    <ModelSelectorInput placeholder="Search models..." />
+                    <ModelSelectorList>
+                      <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                      {["OpenAI", "Anthropic", "Google"].map(chef => (
+                        <ModelSelectorGroup heading={chef} key={chef}>
+                          {models
+                            .filter(m => m.chef === chef)
+                            .map(m => (
+                              <ModelSelectorItem
+                                key={m.id}
+                                onSelect={() => {
+                                  setModel(m.id)
+                                  setModelSelectorOpen(false)
+                                }}
+                                value={m.id}
+                              >
+                                <ModelSelectorLogo provider={m.chefSlug} />
+                                <ModelSelectorName>{m.name}</ModelSelectorName>
+                                <ModelSelectorLogoGroup>
+                                  {m.providers.map(provider => (
+                                    <ModelSelectorLogo key={provider} provider={provider} />
+                                  ))}
+                                </ModelSelectorLogoGroup>
+                                {model === m.id ? (
+                                  <CheckIcon className="ml-auto size-4" />
+                                ) : (
+                                  <div className="ml-auto size-4" />
+                                )}
+                              </ModelSelectorItem>
+                            ))}
+                        </ModelSelectorGroup>
+                      ))}
+                    </ModelSelectorList>
+                  </ModelSelectorContent>
+                </ModelSelector>
+              </PromptInputTools>
+              <PromptInputSubmit
+                disabled={!text.trim() || stream.isLoading}
+                status={stream.isLoading ? "streaming" : "ready"}
+              />
+            </PromptInputFooter>
+          </PromptInput>
+        </div>
+      </div>
     </div>
-  );
+  )
 }
+
+export default Chat

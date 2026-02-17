@@ -2,7 +2,6 @@ import * as React from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -60,7 +59,7 @@ export function SignupForm({ onSwitchToLogin }: SignupFormProps) {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              {/* <Label htmlFor="email">Email</Label> */}
               <Input
                 id="email"
                 name="email"
@@ -71,7 +70,7 @@ export function SignupForm({ onSwitchToLogin }: SignupFormProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              {/* <Label htmlFor="password">Password</Label> */}
               <Input
                 id="password"
                 name="password"
