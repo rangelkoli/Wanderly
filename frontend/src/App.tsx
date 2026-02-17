@@ -10,27 +10,42 @@ import {
 import { api } from "../convex/_generated/api";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
+import { LoginForm } from "@/components/login";
+import { SignupForm } from "@/components/signup";
+import { Chat } from "./components/chat";
 
 export default function App() {
   return (
     <>
-      <header className="sticky top-0 z-10 bg-light dark:bg-dark p-4 border-b-2 border-slate-200 dark:border-slate-800">
-        Convex + React + Convex Auth
-        <SignOutButton />
+      <header className="sticky top-0 z-10 bg-white dark:bg-slate-950 p-4 border-b-2 border-slate-200 dark:border-slate-800">
+        <div className="flex items-center justify-between">
+          <span className="font-semibold">Convex + React + Convex Auth</span>
+          <SignOutButton />
+        </div>
       </header>
       <main className="p-8 flex flex-col gap-16">
-        <h1 className="text-4xl font-bold text-center">
+        <h1 className="text-4xl font-bold text-center text-balance">
           Convex + React + Convex Auth
         </h1>
         <Authenticated>
-          <Content />
+          <Chat />
         </Authenticated>
         <Unauthenticated>
-          <SignInForm />
+          <AuthForms />
         </Unauthenticated>
       </main>
     </>
   );
+}
+
+function AuthForms() {
+  const [view, setView] = useState<"login" | "signup">("login");
+
+  if (view === "login") {
+    return <LoginForm onSwitchToSignup={() => setView("signup")} />;
+  }
+
+  return <SignupForm onSwitchToLogin={() => setView("login")} />;
 }
 
 function SignOutButton() {
@@ -40,7 +55,7 @@ function SignOutButton() {
     <>
       {isAuthenticated && (
         <button
-          className="bg-slate-200 dark:bg-slate-800 text-dark dark:text-light rounded-md px-2 py-1"
+          className="bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-md px-3 py-1.5 text-sm font-medium"
           onClick={() => void signOut()}
         >
           Sign out
@@ -50,72 +65,9 @@ function SignOutButton() {
   );
 }
 
-function SignInForm() {
-  const { signIn } = useAuthActions();
-  const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <div className="flex flex-col gap-8 w-96 mx-auto">
-      <p>Log in to see the numbers</p>
-      <form
-        className="flex flex-col gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const formData = new FormData(e.target as HTMLFormElement);
-          formData.set("flow", flow);
-          void signIn("password", formData).catch((error) => {
-            setError(error.message);
-          });
-        }}
-      >
-        <input
-          className="bg-light dark:bg-dark text-dark dark:text-light rounded-md p-2 border-2 border-slate-200 dark:border-slate-800"
-          type="email"
-          name="email"
-          placeholder="Email"
-        />
-        <input
-          className="bg-light dark:bg-dark text-dark dark:text-light rounded-md p-2 border-2 border-slate-200 dark:border-slate-800"
-          type="password"
-          name="password"
-          placeholder="Password"
-        />
-        <button
-          className="bg-dark dark:bg-light text-light dark:text-dark rounded-md"
-          type="submit"
-        >
-          {flow === "signIn" ? "Sign in" : "Sign up"}
-        </button>
-        <div className="flex flex-row gap-2">
-          <span>
-            {flow === "signIn"
-              ? "Don't have an account?"
-              : "Already have an account?"}
-          </span>
-          <span
-            className="text-dark dark:text-light underline hover:no-underline cursor-pointer"
-            onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}
-          >
-            {flow === "signIn" ? "Sign up instead" : "Sign in instead"}
-          </span>
-        </div>
-        {error && (
-          <div className="bg-red-500/20 border-2 border-red-500/50 rounded-md p-2">
-            <p className="text-dark dark:text-light font-mono text-xs">
-              Error signing in: {error}
-            </p>
-          </div>
-        )}
-      </form>
-    </div>
-  );
-}
-
 function Content() {
   const { viewer, numbers } =
-    useQuery(api.myFunctions.listNumbers, {
-      count: 10,
-    }) ?? {};
+    useQuery(api.myFunctions.listNumbers, { count: 10 }) ?? {};
   const addNumber = useMutation(api.myFunctions.addNumber);
 
   if (viewer === undefined || numbers === undefined) {
@@ -129,13 +81,13 @@ function Content() {
   return (
     <div className="flex flex-col gap-8 max-w-lg mx-auto">
       <p>Welcome {viewer ?? "Anonymous"}!</p>
-      <p>
+      <p className="text-pretty">
         Click the button below and open this page in another window - this data
         is persisted in the Convex cloud database!
       </p>
       <p>
         <button
-          className="bg-dark dark:bg-light text-light dark:text-dark text-sm px-4 py-2 rounded-md border-2"
+          className="bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 text-sm px-4 py-2 rounded-md border-2 border-slate-900 dark:border-slate-100 font-medium"
           onClick={() => {
             void addNumber({ value: Math.floor(Math.random() * 10) });
           }}
@@ -151,14 +103,14 @@ function Content() {
       </p>
       <p>
         Edit{" "}
-        <code className="text-sm font-bold font-mono bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded-md">
+        <code className="text-sm font-bold font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded-md">
           convex/myFunctions.ts
         </code>{" "}
         to change your backend
       </p>
       <p>
         Edit{" "}
-        <code className="text-sm font-bold font-mono bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded-md">
+        <code className="text-sm font-bold font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded-md">
           src/App.tsx
         </code>{" "}
         to change your frontend
@@ -208,11 +160,16 @@ function ResourceCard({
   href: string;
 }) {
   return (
-    <div className="flex flex-col gap-2 bg-slate-200 dark:bg-slate-800 p-4 rounded-md h-28 overflow-auto">
-      <a href={href} className="text-sm underline hover:no-underline">
+    <a
+      href={href}
+      className="flex flex-col gap-2 bg-slate-100 dark:bg-slate-800 p-4 rounded-md h-28 overflow-auto hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+    >
+      <span className="text-sm font-medium underline-offset-4 hover:underline">
         {title}
-      </a>
-      <p className="text-xs">{description}</p>
-    </div>
+      </span>
+      <p className="text-xs text-slate-600 dark:text-slate-400">
+        {description}
+      </p>
+    </a>
   );
 }
