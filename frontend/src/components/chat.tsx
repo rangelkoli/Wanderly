@@ -2,7 +2,7 @@
 import { useStream } from "@langchain/langgraph-sdk/react";
 
 import { CheckIcon, GlobeIcon, MicIcon } from "lucide-react";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import {
   Attachment,
@@ -26,7 +26,7 @@ import {
   ToolHeader,
   ToolOutput,
 } from "@/components/ai-elements/tool";
-import { ReelEmbed } from "@/components/reel-embed";
+import { ReelsList } from "@/components/reel-embed";
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -217,26 +217,46 @@ export function Chat() {
                   .join("")
               : msg.content || "";
 
+            const instagramRegex =
+              /https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g;
+            const parts = content.split(instagramRegex);
             const instagramLinks =
-              content.match(
-                /https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g,
-              ) || [];
-            const contentWithoutLinks = content
-              .replace(
-                /https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g,
-                "",
-              )
-              .trim();
+              content.match(instagramRegex) || [];
+
+            const renderContent: React.ReactNode[] = [];
+            let currentReelGroup: string[] = [];
+
+            const flushReelGroup = () => {
+              if (currentReelGroup.length > 0) {
+                renderContent.push(
+                  <ReelsList key={`reels-${renderContent.length}`} urls={currentReelGroup} />
+                );
+                currentReelGroup = [];
+              }
+            };
+
+            parts.forEach((part, index) => {
+              const trimmedPart = part.trim();
+              const reelUrl = instagramLinks[index];
+
+              if (trimmedPart) {
+                flushReelGroup();
+                renderContent.push(
+                  <MessageResponse key={`text-${index}`}>{trimmedPart}</MessageResponse>
+                );
+              }
+
+              if (reelUrl) {
+                currentReelGroup.push(reelUrl);
+              }
+            });
+
+            flushReelGroup();
 
             return (
               <Message key={msg.id} from={isUser ? "user" : "assistant"}>
                 <MessageContent>
-                  {contentWithoutLinks && (
-                    <MessageResponse>{contentWithoutLinks}</MessageResponse>
-                  )}
-                  {instagramLinks.map((link, idx) => (
-                    <ReelEmbed key={`${link}-${idx}`} url={link} />
-                  ))}
+                  {renderContent}
                 </MessageContent>
               </Message>
             );

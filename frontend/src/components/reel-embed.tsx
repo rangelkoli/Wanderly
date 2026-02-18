@@ -1,23 +1,6 @@
 import React from "react";
 import { InstagramEmbed } from "react-social-media-embed";
 
-export function ReelEmbed({ url }: { url: string }) {
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        justifyContent: "flex-start",
-        marginBottom: "16px",
-        marginRight: "16px",
-        flexDirection: "row",
-        flex: "0 0 auto",
-      }}
-    >
-      <InstagramEmbed url={url} />
-    </div>
-  );
-}
-
 // usage:
 // <ReelEmbed url="https://www.instagram.com/reel/SHORTCODE/" />
 export function ReelsList({ urls }: { urls: string[] }) {
