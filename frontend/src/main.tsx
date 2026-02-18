@@ -5,17 +5,20 @@ import { ConvexReactClient } from "convex/react";
 import "./index.css";
 import App from "./App.tsx";
 import { BrowserRouter, Route, Routes } from "react-router";
+import { ThemeProvider } from "./components/theme-provider";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ConvexAuthProvider client={convex}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<App />} />
-        </Routes>
-      </BrowserRouter>
-    </ConvexAuthProvider>
+    <ThemeProvider>
+      <ConvexAuthProvider client={convex}>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<App />} />
+          </Routes>
+        </BrowserRouter>
+      </ConvexAuthProvider>
+    </ThemeProvider>
   </StrictMode>,
 );

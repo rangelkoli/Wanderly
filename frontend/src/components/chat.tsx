@@ -1,32 +1,32 @@
-"use client"
+"use client";
 import { useStream } from "@langchain/langgraph-sdk/react";
 
-import { CheckIcon, GlobeIcon, MicIcon } from "lucide-react"
-import { useState } from "react"
-import { toast } from "sonner"
+import { CheckIcon, GlobeIcon, MicIcon } from "lucide-react";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   Attachment,
   AttachmentPreview,
   AttachmentRemove,
   Attachments,
-} from "@/components/ai-elements/attachments"
+} from "@/components/ai-elements/attachments";
 import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
-} from "@/components/ai-elements/conversation"
+} from "@/components/ai-elements/conversation";
 import {
   Message,
   MessageContent,
   MessageResponse,
-} from "@/components/ai-elements/message"
+} from "@/components/ai-elements/message";
 import {
   Tool,
   ToolContent,
   ToolHeader,
   ToolOutput,
-} from "@/components/ai-elements/tool"
-import { ReelEmbed } from "@/components/reel-embed"
+} from "@/components/ai-elements/tool";
+import { ReelEmbed } from "@/components/reel-embed";
 import {
   ModelSelector,
   ModelSelectorContent,
@@ -39,7 +39,7 @@ import {
   ModelSelectorLogoGroup,
   ModelSelectorName,
   ModelSelectorTrigger,
-} from "@/components/ai-elements/model-selector"
+} from "@/components/ai-elements/model-selector";
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -55,7 +55,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
   usePromptInputAttachments,
-} from "@/components/ai-elements/prompt-input"
+} from "@/components/ai-elements/prompt-input";
 
 const models = [
   {
@@ -93,7 +93,7 @@ const models = [
     chefSlug: "google",
     providers: ["google"],
   },
-]
+];
 
 // const suggestions = [
 //   "What are the latest trends in AI?",
@@ -112,18 +112,18 @@ const mockResponses = [
   "This is an interesting topic that comes up frequently. The solution typically involves understanding the core concepts and applying them in the right context. Here's what I recommend...",
   "Great choice of topic! This is something that many developers encounter. The approach I'd suggest is to start with the fundamentals and then build up to more complex scenarios.",
   "That's definitely worth exploring. From what I can see, the best way to handle this is to consider both the theoretical aspects and practical implementation details.",
-]
+];
 
 const PromptInputAttachmentsDisplay = () => {
-  const attachments = usePromptInputAttachments()
+  const attachments = usePromptInputAttachments();
 
   if (attachments.files.length === 0) {
-    return null
+    return null;
   }
 
   return (
     <Attachments variant="inline">
-      {attachments.files.map(attachment => (
+      {attachments.files.map((attachment) => (
         <Attachment
           data={attachment}
           key={attachment.id}
@@ -134,90 +134,112 @@ const PromptInputAttachmentsDisplay = () => {
         </Attachment>
       ))}
     </Attachments>
-  )
-}
+  );
+};
 
 export function Chat() {
-  const [model, setModel] = useState<string>(models[0].id)
-  const [modelSelectorOpen, setModelSelectorOpen] = useState(false)
-  const [text, setText] = useState<string>("")
-  const [useWebSearch, setUseWebSearch] = useState<boolean>(false)
-  const [useMicrophone, setUseMicrophone] = useState<boolean>(false)
-  
+  const [model, setModel] = useState<string>(models[0].id);
+  const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
+  const [text, setText] = useState<string>("");
+  const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
+  const [useMicrophone, setUseMicrophone] = useState<boolean>(false);
+
+  const [threadId, setThreadId] = useState<string | undefined>(undefined);
+
   const stream = useStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
+    threadId,
+    onThreadId: setThreadId,
   });
-  
-  const selectedModelData = models.find(m => m.id === model)
+
+  const selectedModelData = models.find((m) => m.id === model);
 
   const handleSubmit = async (message: PromptInputMessage) => {
-    const hasText = Boolean(message.text)
-    const hasAttachments = Boolean(message.files?.length)
+    const hasText = Boolean(message.text);
+    const hasAttachments = Boolean(message.files?.length);
 
     if (!(hasText || hasAttachments)) {
-      return
+      return;
     }
 
-    setText("")
+    setText("");
 
     if (message.files?.length) {
       toast.success("Files attached", {
         description: `${message.files.length} file(s) attached to message`,
-      })
+      });
     }
 
     await stream.submit({
       messages: [{ content: message.text, type: "human" }],
     });
-  }
-  console.log("Stream status:", stream.messages)
+  };
+  console.log("Stream status:", stream.messages);
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden pt-16">
       <Conversation className="min-h-0 flex-1 border-b">
         <ConversationContent>
           {stream.messages.map((msg) => {
-            const isUser = msg.type === "human"
-            
+            const isUser = msg.type === "human";
+
             if (msg.type === "tool") {
-              const toolContent = msg.content as string
+              const toolContent = msg.content as string;
               return (
                 <Message key={msg.id} from="tool">
                   <Tool>
-                    <ToolHeader 
-                      title={msg.name || "Tool"} 
-                      type="tool-invocation" 
-                      state={msg.status === "error" ? "output-error" : "output-available"} 
+                    <ToolHeader
+                      title={msg.name || "Tool"}
+                      type="tool-invocation"
+                      state={
+                        msg.status === "error"
+                          ? "output-error"
+                          : "output-available"
+                      }
                     />
                     <ToolContent>
-                      <ToolOutput 
-                        output={toolContent} 
-                        errorText={msg.status === "error" ? toolContent : undefined} 
+                      <ToolOutput
+                        output={toolContent}
+                        errorText={
+                          msg.status === "error" ? toolContent : undefined
+                        }
                       />
                     </ToolContent>
                   </Tool>
                 </Message>
-              )
+              );
             }
-            
-            const content = Array.isArray(msg.content) 
-              ? msg.content.map((c: any) => c.text || c.content || JSON.stringify(c)).join("")
-              : msg.content || ""
-            
-            const instagramLinks = content.match(/https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g) || []
-            const contentWithoutLinks = content.replace(/https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g, "").trim()
-            
+
+            const content = Array.isArray(msg.content)
+              ? msg.content
+                  .map((c: any) => c.text || c.content || JSON.stringify(c))
+                  .join("")
+              : msg.content || "";
+
+            const instagramLinks =
+              content.match(
+                /https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g,
+              ) || [];
+            const contentWithoutLinks = content
+              .replace(
+                /https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g,
+                "",
+              )
+              .trim();
+
             return (
               <Message key={msg.id} from={isUser ? "user" : "assistant"}>
                 <MessageContent>
-                  {contentWithoutLinks && <MessageResponse>{contentWithoutLinks}</MessageResponse>}
+                  {contentWithoutLinks && (
+                    <MessageResponse>{contentWithoutLinks}</MessageResponse>
+                  )}
                   {instagramLinks.map((link, idx) => (
                     <ReelEmbed key={`${link}-${idx}`} url={link} />
                   ))}
                 </MessageContent>
               </Message>
-            )
+            );
           })}
           {stream.isLoading ? (
             <Message from="assistant">
@@ -225,9 +247,7 @@ export function Chat() {
                 <MessageResponse>Thinking...</MessageResponse>
               </MessageContent>
             </Message>
-          )
-        :null
-        }
+          ) : null}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
@@ -247,7 +267,10 @@ export function Chat() {
               <PromptInputAttachmentsDisplay />
             </PromptInputHeader>
             <PromptInputBody>
-              <PromptInputTextarea onChange={event => setText(event.target.value)} value={text} />
+              <PromptInputTextarea
+                onChange={(event) => setText(event.target.value)}
+                value={text}
+              />
             </PromptInputBody>
             <PromptInputFooter>
               <PromptInputTools>
@@ -271,14 +294,21 @@ export function Chat() {
                   <GlobeIcon size={16} />
                   <span>Search</span>
                 </PromptInputButton>
-                <ModelSelector onOpenChange={setModelSelectorOpen} open={modelSelectorOpen}>
+                <ModelSelector
+                  onOpenChange={setModelSelectorOpen}
+                  open={modelSelectorOpen}
+                >
                   <ModelSelectorTrigger asChild>
                     <PromptInputButton>
                       {selectedModelData?.chefSlug && (
-                        <ModelSelectorLogo provider={selectedModelData.chefSlug} />
+                        <ModelSelectorLogo
+                          provider={selectedModelData.chefSlug}
+                        />
                       )}
                       {selectedModelData?.name && (
-                        <ModelSelectorName>{selectedModelData.name}</ModelSelectorName>
+                        <ModelSelectorName>
+                          {selectedModelData.name}
+                        </ModelSelectorName>
                       )}
                     </PromptInputButton>
                   </ModelSelectorTrigger>
@@ -286,24 +316,27 @@ export function Chat() {
                     <ModelSelectorInput placeholder="Search models..." />
                     <ModelSelectorList>
                       <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-                      {["OpenAI", "Anthropic", "Google"].map(chef => (
+                      {["OpenAI", "Anthropic", "Google"].map((chef) => (
                         <ModelSelectorGroup heading={chef} key={chef}>
                           {models
-                            .filter(m => m.chef === chef)
-                            .map(m => (
+                            .filter((m) => m.chef === chef)
+                            .map((m) => (
                               <ModelSelectorItem
                                 key={m.id}
                                 onSelect={() => {
-                                  setModel(m.id)
-                                  setModelSelectorOpen(false)
+                                  setModel(m.id);
+                                  setModelSelectorOpen(false);
                                 }}
                                 value={m.id}
                               >
                                 <ModelSelectorLogo provider={m.chefSlug} />
                                 <ModelSelectorName>{m.name}</ModelSelectorName>
                                 <ModelSelectorLogoGroup>
-                                  {m.providers.map(provider => (
-                                    <ModelSelectorLogo key={provider} provider={provider} />
+                                  {m.providers.map((provider) => (
+                                    <ModelSelectorLogo
+                                      key={provider}
+                                      provider={provider}
+                                    />
                                   ))}
                                 </ModelSelectorLogoGroup>
                                 {model === m.id ? (
@@ -328,7 +361,7 @@ export function Chat() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default Chat
+export default Chat;

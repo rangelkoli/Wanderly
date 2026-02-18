@@ -105,11 +105,11 @@ For each day, output 2–4 neighborhood clusters. For each cluster, list 2–4 s
 # )
 model = init_chat_model("google_genai:gemini-2.5-flash-lite")
 
+config = {"configurable": {"thread_id": "123456789"}} 
 
 graph = create_agent(
     tools=[internet_search, get_insta_reels],
     system_prompt=SYSTEM_PROMPT,
     model=model,
     middleware=[],
-
 )

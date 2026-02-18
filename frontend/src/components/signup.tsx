@@ -1,7 +1,9 @@
 import * as React from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { Mail, Lock, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Card,
   CardContent,
@@ -21,12 +23,15 @@ export function SignupForm({ onSwitchToLogin }: SignupFormProps) {
   const [isLoading, setIsLoading] = React.useState(false);
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-slate-50 px-4 py-12 dark:bg-slate-950">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-balance">Create an account</CardTitle>
-          <CardDescription>
-            Enter your email to sign up for an account
+    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 px-4 py-12 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      <Card className="w-full max-w-sm border-slate-200/60 shadow-xl shadow-slate-200/50 dark:border-slate-800/60 dark:shadow-slate-950/50">
+        <CardHeader className="space-y-1 text-center">
+          <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/25">
+            <UserPlus className="size-5 text-white" />
+          </div>
+          <CardTitle className="text-2xl font-semibold tracking-tight">Create an account</CardTitle>
+          <CardDescription className="text-base">
+            Sign up to get started with your journey
           </CardDescription>
         </CardHeader>
         <form
@@ -52,47 +57,70 @@ export function SignupForm({ onSwitchToLogin }: SignupFormProps) {
           <CardContent className="space-y-4">
             {error && (
               <div
-                className="rounded-md bg-red-50 p-3 text-sm text-red-600 dark:bg-red-950 dark:text-red-400"
+                className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400"
                 role="alert"
               >
                 {error}
               </div>
             )}
             <div className="space-y-2">
-              {/* <Label htmlFor="email">Email</Label> */}
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="you@example.com"
-                required
-                autoComplete="email"
-              />
+              <label htmlFor="email" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Email address
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  required
+                  autoComplete="email"
+                  className="pl-10"
+                />
+              </div>
             </div>
             <div className="space-y-2">
-              {/* <Label htmlFor="password">Password</Label> */}
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                required
-                autoComplete="new-password"
-                minLength={8}
-              />
-              <p className="text-xs text-slate-500">
+              <label htmlFor="password" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  placeholder="Create a password"
+                  required
+                  autoComplete="new-password"
+                  minLength={8}
+                  className="pl-10"
+                />
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Must be at least 8 characters
               </p>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Creating account..." : "Sign up"}
+            <Button type="submit" className="w-full h-10 font-medium" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Spinner className="size-4" />
+                  Creating account...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="size-4" />
+                  Sign up
+                </>
+              )}
             </Button>
             <p className="text-center text-sm text-slate-600 dark:text-slate-400">
               Already have an account?{" "}
               <button
                 type="button"
-                className="font-medium text-slate-900 underline-offset-4 hover:underline dark:text-slate-100"
+                className="font-medium text-blue-600 underline-offset-4 transition-colors hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
                 onClick={onSwitchToLogin}
               >
                 Sign in

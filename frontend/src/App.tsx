@@ -14,6 +14,8 @@ import { LoginForm } from "@/components/login";
 import { SignupForm } from "@/components/signup";
 import { Chat } from "./components/chat";
 import { BrowserRouter } from "react-router";
+import { useTheme } from "./components/theme-provider";
+import { Moon, Sun } from "lucide-react";
 
 export default function App() {
   return (
@@ -21,10 +23,13 @@ export default function App() {
       <header className="sticky top-0 z-10 bg-white dark:bg-slate-950 p-4 border-b-2 border-slate-200 dark:border-slate-800">
         <div className="flex items-center justify-between">
           <span className="font-semibold">Convex + React + Convex Auth</span>
-          <SignOutButton />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <SignOutButton />
+          </div>
         </div>
       </header>
-      <main className="p-8 flex flex-col gap-16">
+      <main className="">
         <Authenticated>
           <Chat />
         </Authenticated>
@@ -33,6 +38,20 @@ export default function App() {
         </Unauthenticated>
       </main>
     </>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+
+  return (
+    <button
+      className="bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-md px-3 py-1.5 text-sm font-medium flex items-center gap-2"
+      onClick={toggleTheme}
+    >
+      {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+      {theme === "dark" ? "Light" : "Dark"}
+    </button>
   );
 }
 
