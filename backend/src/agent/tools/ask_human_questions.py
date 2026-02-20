@@ -1,9 +1,11 @@
+from typing import List, Optional, Any
 from langgraph.types import interrupt
+from typing_extensions import TypedDict
 
-def ash_human_questions(state: State):
-    """Ask the human user questions to clarify their preferences for a travel itinerary. This function is called when the agent needs more information to proceed with planning."""
-    # Define the questions to ask the user
-    
 
-    # When you resume, Command(resume=...) returns that value here
-    return {"approved": approved}
+def ask_human(question: str, choices: List[str]) -> str:
+    """Ask the human a clarifying question and wait for their answer."""
+    # The LLM's chosen question is passed here as `question`
+    # interrupt() pauses the graph and surfaces it to the caller
+    answer = interrupt({"question": question, "choices": choices})
+    return answer  # returned as the ToolMessage content back to the LLM

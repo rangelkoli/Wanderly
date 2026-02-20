@@ -56,6 +56,7 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
+import QuestionCard from "./human-tool-call";
 
 const models = [
   {
@@ -177,6 +178,45 @@ export function Chat() {
   };
   console.log("Stream status:", stream.messages);
 
+  const [askHumanArgs, setAskHumanArgs] = useState<{
+    question: string;
+    choices: string[];
+  } | null>(null);
+
+  useEffect(() => {
+    const interruptedTask = stream.interrupt;
+    console.log("Interrupted task:", interruptedTask);  
+      
+    if (interruptedTask) {
+      const interrupt = interruptedTask as any;
+      const val = interrupt.value as any;
+      if (val && typeof val === "object" && val.question) {
+        setAskHumanArgs({
+          question: val.question,
+          choices: val.choices || [],
+        });
+      }
+    } else {
+      setAskHumanArgs(null);
+    }
+  }, [stream]);
+
+  const handleAnswer = async (answer: string) => {
+    setAskHumanArgs(null);
+    try {
+      await stream.submit(null, {
+        command: {
+          resume: answer,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to resume stream:", error);
+      toast.error("Failed to send answer");
+    }
+  };
+
+
+
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden pt-16">
       <Conversation className="min-h-0 flex-1 border-b">
@@ -268,6 +308,13 @@ export function Chat() {
               </MessageContent>
             </Message>
           ) : null}
+           {askHumanArgs && (
+        <QuestionCard
+          question={askHumanArgs.question}
+          choices={askHumanArgs.choices}
+          onAnswer={handleAnswer}
+        />
+      )}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>

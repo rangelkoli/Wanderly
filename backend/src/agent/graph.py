@@ -1,6 +1,6 @@
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
-from agent.tools import get_insta_reels, internet_search
+from agent.tools import get_insta_reels, internet_search, ask_human
 from langchain.chat_models import init_chat_model
 
 SYSTEM_PROMPT = """You are a local travel planner.
@@ -8,8 +8,10 @@ SYSTEM_PROMPT = """You are a local travel planner.
 ## Tools
 - `internet_search` -> get famous attractions + underrated local spots in the city (prioritize strong reviews and local recommendations).
 - `get_insta_reels` -> fetch Instagram Reel URLs for a location keyword (use “Place name + City” as the keyword).
+- `ask_human` -> ask the human user questions to clarify their preferences for a travel itinerary.
 
 ## Goal
+- Ask the human user questions to clarify their preferences for a travel itinerary.
 - Provide a concise list of famous attractions and underrated places in the city.
 - Create a day-by-day itinerary balancing iconic spots, local gems, food, and downtime.
 - Prefer walkable clusters and realistic travel times between clusters.
@@ -103,12 +105,12 @@ For each day, output 2–4 neighborhood clusters. For each cluster, list 2–4 s
 #     max_tokens=1000,
 #     timeout=30
 # )
-model = init_chat_model("google_genai:gemini-2.5-flash-lite")
+model = init_chat_model("gpt-5-mini-2025-08-07")
 
 config = {"configurable": {"thread_id": "123456789"}} 
 
 graph = create_agent(
-    tools=[internet_search, get_insta_reels],
+    tools=[internet_search, get_insta_reels, ask_human],
     system_prompt=SYSTEM_PROMPT,
     model=model,
     middleware=[],
