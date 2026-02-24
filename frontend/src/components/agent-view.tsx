@@ -1,10 +1,11 @@
 "use client";
-import { useStream } from "@langchain/langgraph-sdk/react";
 
+import { useStream } from "@langchain/langgraph-sdk/react";
 import { CheckIcon, GlobeIcon, MicIcon } from "lucide-react";
-import React, { useState, useMemo, useRef, useCallback } from "react";
+import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { useParams } from "react-router";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Attachment,
   AttachmentPreview,
@@ -12,21 +13,10 @@ import {
   Attachments,
 } from "@/components/ai-elements/attachments";
 import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
-import {
   Message,
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolOutput,
-} from "@/components/ai-elements/tool";
 import { ReelsList } from "@/components/reel-embed";
 import {
   ModelSelector,
@@ -60,6 +50,7 @@ import {
 import QuestionCard from "./human-tool-call";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { Persona, type PersonaState } from "./ai-elements/persona";
 
 const models = [
   {
@@ -99,7 +90,6 @@ const models = [
   },
 ];
 
-
 const PromptInputAttachmentsDisplay = () => {
   const attachments = usePromptInputAttachments();
 
@@ -123,11 +113,38 @@ const PromptInputAttachmentsDisplay = () => {
   );
 };
 
-interface ChatProps {
+interface AgentViewProps {
   onSessionCreated?: (sessionId: string) => void;
 }
 
-export function Chat({ onSessionCreated }: ChatProps) {
+function determineAgentState(
+  stream: ReturnType<typeof useStream>,
+  askHumanArgs: { question: string; choices: string[] } | null
+): PersonaState {
+  if (askHumanArgs) {
+    return "listening";
+  }
+
+  const hasToolMessages = stream.messages.some((msg) => msg.type === "tool");
+  const latestMessage = stream.messages[stream.messages.length - 1];
+  const isLatestMessageFromAssistant = latestMessage?.type === "ai";
+  
+  if (stream.isLoading && hasToolMessages) {
+    return "thinking";
+  }
+  
+  if (stream.isLoading && isLatestMessageFromAssistant) {
+    return "speaking";
+  }
+  
+  if (stream.isLoading) {
+    return "thinking";
+  }
+
+  return "idle";
+}
+
+export function AgentView({ onSessionCreated }: AgentViewProps) {
   const { sessionId: urlSessionId } = useParams<{ sessionId: string }>();
 
   const [model, setModel] = useState<string>(models[0].id);
@@ -136,6 +153,7 @@ export function Chat({ onSessionCreated }: ChatProps) {
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
   const [useMicrophone, setUseMicrophone] = useState<boolean>(false);
   const [createdThreadId, setCreatedThreadId] = useState<string | undefined>(undefined);
+  const [hasSentMessage, setHasSentMessage] = useState(false);
 
   const existingSession = useQuery(
     api.sessions.get,
@@ -173,7 +191,31 @@ export function Chat({ onSessionCreated }: ChatProps) {
     },
   });
 
+  useEffect(() => {
+    if (stream.messages.length > 0) {
+      setHasSentMessage(true);
+    }
+  }, [stream.messages.length]);
+
   const selectedModelData = models.find((m) => m.id === model);
+
+  const askHumanArgs = useMemo(() => {
+    const interruptedTask = stream.interrupt;
+    
+    if (interruptedTask) {
+      const interrupt = interruptedTask as any;
+      const val = interrupt.value;
+      if (val && typeof val === "object" && val.question) {
+        return {
+          question: val.question,
+          choices: val.choices || [],
+        };
+      }
+    }
+    return null;
+  }, [stream.interrupt]);
+
+  const personaState = determineAgentState(stream, askHumanArgs);
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const hasText = Boolean(message.text);
@@ -200,24 +242,6 @@ export function Chat({ onSessionCreated }: ChatProps) {
       messages: [{ content: message.text, type: "human" }],
     });
   };
-  console.log("Stream status:", stream.messages);
-
-  const askHumanArgs = useMemo(() => {
-    const interruptedTask = stream.interrupt;
-    console.log("Interrupted task:", interruptedTask);
-    
-    if (interruptedTask) {
-      const interrupt = interruptedTask as any;
-      const val = interrupt.value;
-      if (val && typeof val === "object" && val.question) {
-        return {
-          question: val.question,
-          choices: val.choices || [],
-        };
-      }
-    }
-    return null;
-  }, [stream.interrupt]);
 
   const handleAnswer = useCallback(async (answer: string) => {
     try {
@@ -232,111 +256,155 @@ export function Chat({ onSessionCreated }: ChatProps) {
     }
   }, [stream]);
 
+  const activityLabel = useMemo(() => {
+    if (askHumanArgs) return "Waiting for your answer...";
+    if (stream.isLoading) {
+      const hasToolMessages = stream.messages.some((msg) => msg.type === "tool");
+      if (hasToolMessages) return "Using tools...";
+      return "Thinking...";
+    }
+    return "Ready to help";
+  }, [stream.isLoading, stream.messages, askHumanArgs]);
 
+  const visibleMessages = useMemo(() => {
+    return stream.messages.filter((msg) => msg.type !== "tool");
+  }, [stream.messages]);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <Conversation className="min-h-0 flex-1 border-b">
-        <ConversationContent>
-          {stream.messages.map((msg) => {
-            const isUser = msg.type === "human";
+    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-gradient-to-b from-background via-background to-accent/5">
+      <div className="flex-1 flex flex-col items-center justify-center px-4 pb-32">
+        <motion.div 
+          className="flex flex-col items-center gap-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="relative">
+            <Persona 
+              state={personaState} 
+              variant="obsidian" 
+              className="w-32 h-32 md:w-48 md:h-48"
+            />
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activityLabel}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap"
+              >
+                <span className="text-sm text-muted-foreground font-medium">
+                  {activityLabel}
+                </span>
+              </motion.div>
+            </AnimatePresence>
+          </div>
 
-            if (msg.type === "tool") {
-              const toolContent = msg.content as string;
+          {!hasSentMessage && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="text-center"
+            >
+              <h2 className="text-xl font-semibold mb-2">What can I help you with?</h2>
+              <p className="text-muted-foreground text-sm">
+                Ask me anything or describe what you'd like to create
+              </p>
+            </motion.div>
+          )}
+        </motion.div>
+
+        {visibleMessages.length > 0 && (
+          <motion.div 
+            className="w-full max-w-2xl mt-8 space-y-4 max-h-[40vh] overflow-y-auto px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+          >
+            {visibleMessages.map((msg, index) => {
+              const isUser = msg.type === "human";
+              const content = Array.isArray(msg.content)
+                ? msg.content
+                    .map((c: any) => c.text || c.content || JSON.stringify(c))
+                    .join("")
+                : msg.content || "";
+
+              const instagramRegex =
+                /https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g;
+              const parts = content.split(instagramRegex);
+              const instagramLinks = content.match(instagramRegex) || [];
+
+              const renderContent: React.ReactNode[] = [];
+              let currentReelGroup: string[] = [];
+
+              const flushReelGroup = () => {
+                if (currentReelGroup.length > 0) {
+                  renderContent.push(
+                    <ReelsList key={`reels-${renderContent.length}`} urls={currentReelGroup} />
+                  );
+                  currentReelGroup = [];
+                }
+              };
+
+              parts.forEach((part, idx) => {
+                const trimmedPart = part.trim();
+                const reelUrl = instagramLinks[idx];
+
+                if (trimmedPart) {
+                  flushReelGroup();
+                  renderContent.push(
+                    <MessageResponse key={`text-${idx}`}>{trimmedPart}</MessageResponse>
+                  );
+                }
+
+                if (reelUrl) {
+                  currentReelGroup.push(reelUrl);
+                }
+              });
+
+              flushReelGroup();
+
               return (
-                <Message key={msg.id} from="tool">
-                  <Tool>
-                    <ToolHeader
-                      title={msg.name || "Tool"}
-                      type="tool-invocation"
-                      state={
-                        msg.status === "error"
-                          ? "output-error"
-                          : "output-available"
-                      }
-                    />
-                    <ToolContent>
-                      <ToolOutput
-                        output={toolContent}
-                        errorText={
-                          msg.status === "error" ? toolContent : undefined
-                        }
-                      />
-                    </ToolContent>
-                  </Tool>
-                </Message>
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <Message from={isUser ? "user" : "assistant"}>
+                    <MessageContent>
+                      {renderContent}
+                    </MessageContent>
+                  </Message>
+                </motion.div>
               );
-            }
+            })}
+            {stream.isLoading && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <Message from="assistant">
+                  <MessageContent>
+                    <MessageResponse className="text-muted-foreground">Thinking...</MessageResponse>
+                  </MessageContent>
+                </Message>
+              </motion.div>
+            )}
+            {askHumanArgs && (
+              <QuestionCard
+                question={askHumanArgs.question}
+                choices={askHumanArgs.choices}
+                onAnswer={(answer) => void handleAnswer(answer)}
+              />
+            )}
+          </motion.div>
+        )}
+      </div>
 
-            const content = Array.isArray(msg.content)
-              ? msg.content
-                  .map((c: any) => c.text || c.content || JSON.stringify(c))
-                  .join("")
-              : msg.content || "";
-
-            const instagramRegex =
-              /https:\/\/www\.instagram\.com\/reel\/[a-zA-Z0-9_-]+\/?/g;
-            const parts = content.split(instagramRegex);
-            const instagramLinks =
-              content.match(instagramRegex) || [];
-
-            const renderContent: React.ReactNode[] = [];
-            let currentReelGroup: string[] = [];
-
-            const flushReelGroup = () => {
-              if (currentReelGroup.length > 0) {
-                renderContent.push(
-                  <ReelsList key={`reels-${renderContent.length}`} urls={currentReelGroup} />
-                );
-                currentReelGroup = [];
-              }
-            };
-
-            parts.forEach((part, index) => {
-              const trimmedPart = part.trim();
-              const reelUrl = instagramLinks[index];
-
-              if (trimmedPart) {
-                flushReelGroup();
-                renderContent.push(
-                  <MessageResponse key={`text-${index}`}>{trimmedPart}</MessageResponse>
-                );
-              }
-
-              if (reelUrl) {
-                currentReelGroup.push(reelUrl);
-              }
-            });
-
-            flushReelGroup();
-
-            return (
-              <Message key={msg.id} from={isUser ? "user" : "assistant"}>
-                <MessageContent>
-                  {renderContent}
-                </MessageContent>
-              </Message>
-            );
-          })}
-          {stream.isLoading ? (
-            <Message from="assistant">
-              <MessageContent>
-                <MessageResponse>Thinking...</MessageResponse>
-              </MessageContent>
-            </Message>
-          ) : null}
-           {askHumanArgs && (
-        <QuestionCard
-          question={askHumanArgs.question}
-          choices={askHumanArgs.choices}
-          onAnswer={(answer) => void handleAnswer(answer)}
-        />
-      )}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
-      <div className="shrink-0 space-y-4 pt-4">
-        <div className="w-full px-4 pb-4">
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent">
+        <div className="max-w-2xl mx-auto">
           <PromptInput globalDrop multiple onSubmit={handleSubmit}>
             <PromptInputHeader>
               <PromptInputAttachmentsDisplay />
@@ -345,6 +413,7 @@ export function Chat({ onSessionCreated }: ChatProps) {
               <PromptInputTextarea
                 onChange={(event) => setText(event.target.value)}
                 value={text}
+                placeholder="Describe what you'd like to create..."
               />
             </PromptInputBody>
             <PromptInputFooter>
@@ -439,4 +508,4 @@ export function Chat({ onSessionCreated }: ChatProps) {
   );
 }
 
-export default Chat;
+export default AgentView;

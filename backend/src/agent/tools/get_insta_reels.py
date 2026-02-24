@@ -47,11 +47,11 @@ def resolve_to_reel(context, shortcode: str) -> str | None:
 
 async def get_reels_for_keyword(
     keyword: str,
-    max_urls: int = 10,
+    max_urls: int = 3,
     state: str = "state.json",
     headful: bool = False,
-    scrolls: int = 50,
-    delay: float = 0.8,
+    scrolls: int = 1,
+    delay: float = 0.3,
 ) -> list[str]:
     if not (1 <= max_urls <= 10):
         die("max_urls must be between 1 and 10")
@@ -62,12 +62,13 @@ async def get_reels_for_keyword(
         browser = await p.chromium.launch(headless=not headful)
         context = await browser.new_context(storage_state=state)
         page = await context.new_page()
+        print(f"Navigating to {keyword_url}...")
 
         await page.goto(keyword_url, wait_until="domcontentloaded")
 
         shortcodes = []
         seen_codes = set()
-
+        print(f"Scrolling through results for '{keyword}' to find reels...")
         for _ in range(scrolls):
             hrefs = await page.eval_on_selector_all(
                 "a[href]",
@@ -85,25 +86,31 @@ async def get_reels_for_keyword(
 
             await page.mouse.wheel(0, 3000)
             await asyncio.sleep(delay)
+            print(f"Found {len(shortcodes)} unique media links so far...")
 
-            if len(shortcodes) >= max_urls * 6:
+            if len(shortcodes) >= max_urls * 3:
                 break
 
-        out = []
-        seen_urls = set()
+        shortcodes_to_resolve = shortcodes[:max_urls * 2]
 
-        for code in shortcodes:
+        async def resolve_single(code: str) -> str | None:
             reel = resolve_to_reel(context, code)
             if not reel:
-                continue
+                return None
             reel = normalize(reel)
-            if reel in seen_urls:
-                continue
-            seen_urls.add(reel)
-            out.append(reel)
-            if len(out) >= max_urls:
-                break
+            return reel if reel not in seen_urls else None
 
+        seen_urls: set[str] = set()
+        out = []
+
+        results = await asyncio.gather(*[resolve_single(code) for code in shortcodes_to_resolve])
+        for reel in results:
+            if reel and reel not in seen_urls:
+                seen_urls.add(reel)
+                out.append(reel)
+                if len(out) >= max_urls:
+                    break
+        print(f"Resolved {len(out)} reel URLs for keyword '{keyword}'.")
         await browser.close()
         return out
 
@@ -112,8 +119,8 @@ async def get_insta_reels(
     keyword: str,
     max_urls: int = 5,
     state: str = "state.json",
-    scrolls: int = 50,
-    delay: float = 0.8,
+    scrolls: int = 10,
+    delay: float = 0.3,
 ) -> list[str]:
     """Get Instagram Reel URLs for a keyword search."""
     return await get_reels_for_keyword(

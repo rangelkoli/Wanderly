@@ -16,7 +16,7 @@
     font-family: Arial, Helvetica, sans-serif;
   }
   :root:not(.light) {
-    --background: oklch(0.145 0 0);
+    --background: #0b0e14;
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
     --card-foreground: oklch(0.985 0 0);

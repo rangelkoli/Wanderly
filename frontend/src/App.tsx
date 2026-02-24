@@ -1,43 +1,118 @@
 "use client";
 
-import {
-  Authenticated,
-  Unauthenticated,
-  useConvexAuth,
-  useMutation,
-  useQuery,
-} from "convex/react";
-import { api } from "../convex/_generated/api";
+import { useConvexAuth } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../convex/_generated/api";
 import { LoginForm } from "@/components/login";
 import { SignupForm } from "@/components/signup";
-import { Chat } from "./components/chat";
-import { BrowserRouter } from "react-router";
+import RunningAgent from "./components/running-agent";
+import { Home } from "./components/home";
+import { Sidebar } from "./components/sidebar";
 import { useTheme } from "./components/theme-provider";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, Menu, X } from "lucide-react";
+import {
+  BrowserRouter,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from "react-router";
+import { Navigate } from "react-router";
+import { Button } from "./components/ui/button";
 
-export default function App() {
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  if (isLoading)
+    return (
+      <div className="flex items-center justify-center h-screen">
+        Loading...
+      </div>
+    );
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function ChatLayout() {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const createSession = useMutation(api.sessions.create);
+
+  const handleNewSession = async () => {
+    const tempThreadId = `temp_${Date.now()}`;
+    const newSessionId = await createSession({
+      threadId: tempThreadId,
+      title: "New Chat",
+    });
+    void navigate(`/chat/${newSessionId}`);
+  };
+
+  const handleSelectSession = (newSessionId: string) => {
+    void navigate(`/chat/${newSessionId}`);
+  };
+
   return (
-    <>
-      <header className="sticky top-0 z-10 bg-white dark:bg-slate-950 p-4 border-b-2 border-slate-200 dark:border-slate-800">
-        <div className="flex items-center justify-between">
-          <span className="font-semibold">Convex + React + Convex Auth</span>
-          <div className="flex items-center gap-2">
+    <div className="flex h-screen overflow-hidden">
+      {sidebarOpen && (
+        <Sidebar
+          currentSessionId={sessionId}
+          onNewSession={handleNewSession}
+          onSelectSession={handleSelectSession}
+        />
+      )}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="sticky top-0 z-10 bg-white dark:bg-slate-950 p-3 border-b-2 border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
+            {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+          </Button>
+          <span className="font-semibold">Wanderly</span>
+          <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
             <SignOutButton />
           </div>
-        </div>
-      </header>
-      <main className="">
-        <Authenticated>
-          <Chat />
-        </Authenticated>
-        <Unauthenticated>
-          <AuthForms />
-        </Unauthenticated>
-      </main>
-    </>
+        </header>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Home />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <ProtectedRoute>
+              <RunningAgent />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/chat/:sessionId"
+          element={
+            <ProtectedRoute>
+              <RunningAgent />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/login" element={<AuthForms />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
@@ -79,114 +154,5 @@ function SignOutButton() {
         </button>
       )}
     </>
-  );
-}
-
-function Content() {
-  const { viewer, numbers } =
-    useQuery(api.myFunctions.listNumbers, { count: 10 }) ?? {};
-  const addNumber = useMutation(api.myFunctions.addNumber);
-
-  if (viewer === undefined || numbers === undefined) {
-    return (
-      <div className="mx-auto">
-        <p>loading... (consider a loading skeleton)</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-8 max-w-lg mx-auto">
-      <p>Welcome {viewer ?? "Anonymous"}!</p>
-      <p className="text-pretty">
-        Click the button below and open this page in another window - this data
-        is persisted in the Convex cloud database!
-      </p>
-      <p>
-        <button
-          className="bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 text-sm px-4 py-2 rounded-md border-2 border-slate-900 dark:border-slate-100 font-medium"
-          onClick={() => {
-            void addNumber({ value: Math.floor(Math.random() * 10) });
-          }}
-        >
-          Add a random number
-        </button>
-      </p>
-      <p>
-        Numbers:{" "}
-        {numbers?.length === 0
-          ? "Click the button!"
-          : (numbers?.join(", ") ?? "...")}
-      </p>
-      <p>
-        Edit{" "}
-        <code className="text-sm font-bold font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded-md">
-          convex/myFunctions.ts
-        </code>{" "}
-        to change your backend
-      </p>
-      <p>
-        Edit{" "}
-        <code className="text-sm font-bold font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded-md">
-          src/App.tsx
-        </code>{" "}
-        to change your frontend
-      </p>
-      <div className="flex flex-col">
-        <p className="text-lg font-bold">Useful resources:</p>
-        <div className="flex gap-2">
-          <div className="flex flex-col gap-2 w-1/2">
-            <ResourceCard
-              title="Convex docs"
-              description="Read comprehensive documentation for all Convex features."
-              href="https://docs.convex.dev/home"
-            />
-            <ResourceCard
-              title="Stack articles"
-              description="Learn about best practices, use cases, and more from a growing
-            collection of articles, videos, and walkthroughs."
-              href="https://www.typescriptlang.org/docs/handbook/2/basic-types.html"
-            />
-          </div>
-          <div className="flex flex-col gap-2 w-1/2">
-            <ResourceCard
-              title="Templates"
-              description="Browse our collection of templates to get started quickly."
-              href="https://www.convex.dev/templates"
-            />
-            <ResourceCard
-              title="Discord"
-              description="Join our developer community to ask questions, trade tips & tricks,
-            and show off your projects."
-              href="https://www.convex.dev/community"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ResourceCard({
-  title,
-  description,
-  href,
-}: {
-  title: string;
-  description: string;
-  href: string;
-}) {
-  return (
-    <a
-      href={href}
-      className="flex flex-col gap-2 bg-slate-100 dark:bg-slate-800 p-4 rounded-md h-28 overflow-auto hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-    >
-      <span className="text-sm font-medium underline-offset-4 hover:underline">
-        {title}
-      </span>
-      <p className="text-xs text-slate-600 dark:text-slate-400">
-        {description}
-      </p>
-    </a>
   );
 }
