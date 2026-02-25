@@ -1,9 +1,7 @@
-import langchain.tools as tool
+
 from langchain.agents import create_agent
 from agent.tools import get_insta_reels, internet_search, ask_human
-from langchain.chat_models import init_chat_model
-
-chatgptModel = init_chat_model("gpt-5-mini-2025-08-07")
+from agent.models.chatgpt import chatgptModel
 
 subagent = create_agent(model=chatgptModel, tools=[internet_search, ask_human], system_prompt="You are a travel budget planner. Your task is to find the cheapest and best travel options for a given destination and budget.")
 

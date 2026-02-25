@@ -47,7 +47,7 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
-import QuestionCard from "./human-tool-call";
+import QuestionCard, { type AskHumanAnswersPayload, type AskHumanQuestion } from "./human-tool-call";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Persona, type PersonaState } from "./ai-elements/persona";
@@ -119,7 +119,10 @@ interface AgentViewProps {
 
 function determineAgentState(
   stream: ReturnType<typeof useStream>,
-  askHumanArgs: { question: string; choices: string[] } | null
+  askHumanArgs:
+    | { kind: "single"; question: string; choices: string[] }
+    | { kind: "multi"; questions: AskHumanQuestion[] }
+    | null
 ): PersonaState {
   if (askHumanArgs) {
     return "listening";
@@ -205,11 +208,20 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
     if (interruptedTask) {
       const interrupt = interruptedTask as any;
       const val = interrupt.value;
-      if (val && typeof val === "object" && val.question) {
-        return {
-          question: val.question,
-          choices: val.choices || [],
-        };
+      if (val && typeof val === "object") {
+        if (Array.isArray((val as any).questions) && (val as any).questions.length) {
+          return {
+            kind: "multi" as const,
+            questions: (val as any).questions as AskHumanQuestion[],
+          };
+        }
+        if ((val as any).question) {
+          return {
+            kind: "single" as const,
+            question: (val as any).question,
+            choices: (val as any).choices || [],
+          };
+        }
       }
     }
     return null;
@@ -243,7 +255,7 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
     });
   };
 
-  const handleAnswer = useCallback(async (answer: string) => {
+  const handleAnswer = useCallback(async (answer: string | AskHumanAnswersPayload) => {
     try {
       await stream.submit(null, {
         command: {
@@ -394,8 +406,9 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
             )}
             {askHumanArgs && (
               <QuestionCard
-                question={askHumanArgs.question}
-                choices={askHumanArgs.choices}
+                question={askHumanArgs.kind === "single" ? askHumanArgs.question : undefined}
+                choices={askHumanArgs.kind === "single" ? askHumanArgs.choices : undefined}
+                questions={askHumanArgs.kind === "multi" ? askHumanArgs.questions : undefined}
                 onAnswer={(answer) => void handleAnswer(answer)}
               />
             )}

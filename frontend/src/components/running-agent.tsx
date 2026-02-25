@@ -30,7 +30,7 @@ import {
   PromptInputTextarea,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
-import QuestionCard from "./human-tool-call";
+import QuestionCard, { type AskHumanAnswersPayload, type AskHumanQuestion } from "./human-tool-call";
 
 const RunningAgent = () => {
   const { sessionId: urlSessionId } = useParams<{ sessionId: string }>();
@@ -96,13 +96,24 @@ const RunningAgent = () => {
     return existingSession?._id ?? urlSessionId;
   }, [existingSession?._id, urlSessionId]);
 
-  const askHumanArgs = useMemo(() => {
+  const askHumanArgs = useMemo<(
+    | { kind: "single"; question: string; choices: string[] }
+    | { kind: "multi"; questions: AskHumanQuestion[] }
+    | null
+  )>(() => {
     const interruptedTask = messages;
     
     if (interruptedTask) {
       const interrupt = interruptedTask as any;
       const val = interrupt.value;
-      if (val && typeof val === "object" && val.question) {
+      if (val && typeof val === "object") {
+        if (Array.isArray((val as any).questions) && (val as any).questions.length) {
+          return {
+            kind: "multi",
+            questions: (val as any).questions as AskHumanQuestion[],
+          };
+        }
+        if (!(val as any).question) return null;
         let choices = val.choices || [];
         
         if (!choices.length && typeof val.question === "string") {
@@ -113,6 +124,7 @@ const RunningAgent = () => {
         }
         
         return {
+          kind: "single",
           question: val.question.replace(/\(choices:\s*[^)]+\)/gi, "").trim(),
           choices,
         };
@@ -121,7 +133,7 @@ const RunningAgent = () => {
     return null;
   }, [messages]);
 
-  const handleAnswer = useCallback(async (answer: string) => {
+  const handleAnswer = useCallback(async (answer: string | AskHumanAnswersPayload) => {
     try {
       await submit(null, {
         command: {
@@ -191,8 +203,9 @@ const RunningAgent = () => {
           ) : null}
           {askHumanArgs && (
             <QuestionCard
-              question={askHumanArgs.question}
-              choices={askHumanArgs.choices}
+              question={askHumanArgs.kind === "single" ? askHumanArgs.question : undefined}
+              choices={askHumanArgs.kind === "single" ? askHumanArgs.choices : undefined}
+              questions={askHumanArgs.kind === "multi" ? askHumanArgs.questions : undefined}
               onAnswer={(answer) => void handleAnswer(answer)}
             />
           )}

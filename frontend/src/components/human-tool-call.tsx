@@ -3,22 +3,72 @@ import { BotIcon, Circle, Pencil, Send } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-interface QuestionCardProps {
+export interface AskHumanQuestion {
+  id?: string;
   question: string;
   choices: string[];
-  onAnswer: (answer: string) => void;
 }
 
-export default function QuestionCard({ question, choices, onAnswer }: QuestionCardProps) {
+export interface AskHumanAnswersPayload {
+  answers: Array<{
+    id?: string;
+    question: string;
+    answer: string;
+  }>;
+}
+
+interface QuestionCardProps {
+  question?: string;
+  choices?: string[];
+  questions?: AskHumanQuestion[];
+  onAnswer: (answer: string | AskHumanAnswersPayload) => void;
+}
+
+export default function QuestionCard({ question, choices = [], questions, onAnswer }: QuestionCardProps) {
   const [isTypingOther, setIsTypingOther] = useState(false);
   const [otherValue, setOtherValue] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+
+  const questionList: AskHumanQuestion[] =
+    questions && questions.length ? questions : question ? [{ question, choices }] : [];
+  const currentQuestion = questionList[currentIndex];
+  const isMultiQuestion = questionList.length > 1;
+
+  const submitAnswer = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed || !currentQuestion) return;
+
+    const nextAnswers = { ...answers, [currentIndex]: trimmed };
+    setAnswers(nextAnswers);
+    setOtherValue("");
+    setIsTypingOther(false);
+
+    if (currentIndex < questionList.length - 1) {
+      setCurrentIndex((prev) => prev + 1);
+      return;
+    }
+
+    if (questionList.length === 1) {
+      onAnswer(trimmed);
+      return;
+    }
+
+    onAnswer({
+      answers: questionList.map((q, index) => ({
+        id: q.id,
+        question: q.question,
+        answer: nextAnswers[index] ?? "",
+      })),
+    });
+  };
 
   const handleOtherSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (otherValue.trim()) {
-      onAnswer(otherValue.trim());
-    }
+    submitAnswer(otherValue);
   };
+
+  if (!currentQuestion) return null;
 
   return (
     <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl w-full mx-auto my-6">
@@ -31,15 +81,20 @@ export default function QuestionCard({ question, choices, onAnswer }: QuestionCa
         </div>
 
         <div className="flex-1 space-y-4">
+          {isMultiQuestion && (
+            <p className="text-xs uppercase tracking-wide text-muted-foreground/60">
+              Question {currentIndex + 1} of {questionList.length}
+            </p>
+          )}
           <h2 className="text-xl font-semibold text-foreground/90 tracking-tight pt-0.5">
-            {question}
+            {currentQuestion.question}
           </h2>
 
           <div className="grid gap-2">
-            {choices.map((choice) => (
+            {(currentQuestion.choices || []).map((choice) => (
               <button
                 key={choice}
-                onClick={() => onAnswer(choice)}
+                onClick={() => submitAnswer(choice)}
                 className={cn(
                   "group relative flex w-full items-center gap-4 rounded-xl border border-white/5 bg-[#1e222d] p-4 text-left transition-all hover:bg-[#252a3a] hover:border-white/10 active:scale-[0.99]",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
@@ -95,7 +150,7 @@ export default function QuestionCard({ question, choices, onAnswer }: QuestionCa
           
           <div className="flex items-center justify-center pt-2">
             <p className="text-xs text-muted-foreground/40 font-medium select-none">
-              Select an option or type
+              {isMultiQuestion ? "Answer each question to continue" : "Select an option or type"}
             </p>
           </div>
         </div>
@@ -103,4 +158,3 @@ export default function QuestionCard({ question, choices, onAnswer }: QuestionCa
     </div>
   );
 }
-

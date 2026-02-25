@@ -57,7 +57,7 @@ import {
   PromptInputTools,
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
-import QuestionCard from "./human-tool-call";
+import QuestionCard, { type AskHumanAnswersPayload, type AskHumanQuestion } from "./human-tool-call";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
@@ -202,24 +202,34 @@ export function Chat({ onSessionCreated }: ChatProps) {
   };
   console.log("Stream status:", stream.messages);
 
-  const askHumanArgs = useMemo(() => {
+  const askHumanArgs = useMemo<(
+    | { kind: "single"; question: string; choices: string[] }
+    | { kind: "multi"; questions: AskHumanQuestion[] }
+    | null
+  )>(() => {
     const interruptedTask = stream.interrupt;
     console.log("Interrupted task:", interruptedTask);
     
     if (interruptedTask) {
       const interrupt = interruptedTask as any;
       const val = interrupt.value;
-      if (val && typeof val === "object" && val.question) {
-        return {
-          question: val.question,
-          choices: val.choices || [],
-        };
+      if (val && typeof val === "object") {
+        if (Array.isArray(val.questions) && val.questions.length) {
+          return { kind: "multi", questions: val.questions as AskHumanQuestion[] };
+        }
+        if (val.question) {
+          return {
+            kind: "single",
+            question: val.question,
+            choices: val.choices || [],
+          };
+        }
       }
     }
     return null;
   }, [stream.interrupt]);
 
-  const handleAnswer = useCallback(async (answer: string) => {
+  const handleAnswer = useCallback(async (answer: string | AskHumanAnswersPayload) => {
     try {
       await stream.submit(null, {
         command: {
@@ -327,8 +337,9 @@ export function Chat({ onSessionCreated }: ChatProps) {
           ) : null}
            {askHumanArgs && (
         <QuestionCard
-          question={askHumanArgs.question}
-          choices={askHumanArgs.choices}
+          question={askHumanArgs.kind === "single" ? askHumanArgs.question : undefined}
+          choices={askHumanArgs.kind === "single" ? askHumanArgs.choices : undefined}
+          questions={askHumanArgs.kind === "multi" ? askHumanArgs.questions : undefined}
           onAnswer={(answer) => void handleAnswer(answer)}
         />
       )}
