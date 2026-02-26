@@ -4,6 +4,8 @@ from typing import List, Optional
 from langgraph.types import interrupt
 from typing_extensions import TypedDict
 
+DEFAULT_PLACE_IMAGE = "https://placehold.co/600x400/e8f3ff/4b6584?text=Place+Image"
+
 
 class PlaceOption(TypedDict, total=False):
     id: str
@@ -11,6 +13,9 @@ class PlaceOption(TypedDict, total=False):
     description: str
     image_url: str
     area: str
+    category: str
+    rating: float
+    review_count: int
 
 
 def select_places(
@@ -25,15 +30,24 @@ def select_places(
         name = (place.get("name") or "").strip()
         if not name:
             continue
-        normalized.append(
-            {
-                "id": place.get("id") or f"place_{idx + 1}",
-                "name": name,
-                "description": (place.get("description") or "").strip(),
-                "image_url": (place.get("image_url") or "").strip(),
-                "area": (place.get("area") or "").strip(),
-            }
-        )
+        normalized_place: PlaceOption = {
+            "id": place.get("id") or f"place_{idx + 1}",
+            "name": name,
+            "description": (place.get("description") or "").strip(),
+            "image_url": (place.get("image_url") or DEFAULT_PLACE_IMAGE).strip(),
+            "area": (place.get("area") or "").strip(),
+            "category": (place.get("category") or "").strip(),
+        }
+
+        rating = place.get("rating")
+        if isinstance(rating, (int, float)):
+            normalized_place["rating"] = float(rating)
+
+        review_count = place.get("review_count")
+        if isinstance(review_count, int):
+            normalized_place["review_count"] = review_count
+
+        normalized.append(normalized_place)
 
     if not normalized:
         raise ValueError("select_places requires at least one valid place option.")

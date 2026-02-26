@@ -57,6 +57,7 @@ export const update = mutation({
   args: {
     sessionId: v.id("sessions"),
     title: v.optional(v.string()),
+    threadId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -65,10 +66,13 @@ export const update = mutation({
     const session = await ctx.db.get("sessions", args.sessionId);
     if (session?.userId !== userId) throw new Error("Not authorized");
 
-    await ctx.db.patch("sessions", args.sessionId, {
-      title: args.title,
+    const patch: { title?: string; threadId?: string; updatedAt: number } = {
       updatedAt: Date.now(),
-    });
+    };
+    if (args.title !== undefined) patch.title = args.title;
+    if (args.threadId !== undefined) patch.threadId = args.threadId;
+
+    await ctx.db.patch("sessions", args.sessionId, patch);
   },
 });
 

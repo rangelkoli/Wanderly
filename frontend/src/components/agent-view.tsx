@@ -175,6 +175,10 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
     return existingSession?.threadId ?? createdThreadId;
   }, [existingSession?.threadId, createdThreadId]);
 
+  const validThreadId = useMemo(() => {
+    return threadId && UUID_REGEX.test(threadId) ? threadId : undefined;
+  }, [threadId]);
+
   const currentSessionId = useMemo(() => {
     return existingSession?._id ?? urlSessionId;
   }, [existingSession?._id, urlSessionId]);
@@ -184,7 +188,7 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
   const stream = useStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
-    threadId,
+    threadId: validThreadId,
     onThreadId: (newThreadId) => {
       if (!newThreadId || !UUID_REGEX.test(newThreadId)) {
         return;
