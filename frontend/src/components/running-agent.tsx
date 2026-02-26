@@ -31,6 +31,10 @@ import {
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input";
 import QuestionCard, { type AskHumanAnswersPayload, type AskHumanQuestion } from "./human-tool-call";
+import PlaceSelectionCard, { type PlaceSelectionPayload, type PlaceOption } from "./place-selection-card";
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const RunningAgent = () => {
   const { sessionId: urlSessionId } = useParams<{ sessionId: string }>();
@@ -49,11 +53,14 @@ const RunningAgent = () => {
     return existingSession?.threadId ?? createdThreadId;
   }, [existingSession?.threadId, createdThreadId]);
 
-  const { submit, messages, isLoading } = useStream({
+  const { submit, messages, isLoading, interrupt } = useStream({
     assistantId: "agent",
     apiUrl: "http://localhost:2024",
     threadId,
     onThreadId: (newThreadId) => {
+      if (!newThreadId || !UUID_REGEX.test(newThreadId)) {
+        return;
+      }
       console.log("onThreadId called with:", newThreadId);
       setCreatedThreadId(newThreadId);
 
@@ -96,20 +103,30 @@ const RunningAgent = () => {
     return existingSession?._id ?? urlSessionId;
   }, [existingSession?._id, urlSessionId]);
 
-  const askHumanArgs = useMemo<(
-    | { kind: "single"; question: string; choices: string[] }
-    | { kind: "multi"; questions: AskHumanQuestion[] }
+  const interruptUi = useMemo<(
+    | { kind: "ask-single"; question: string; choices: string[] }
+    | { kind: "ask-multi"; questions: AskHumanQuestion[] }
+    | { kind: "select-places"; prompt: string; places: PlaceOption[]; minSelect?: number; maxSelect?: number | null }
     | null
   )>(() => {
-    const interruptedTask = messages;
+    const interruptedTask = interrupt;
     
     if (interruptedTask) {
       const interrupt = interruptedTask as any;
       const val = interrupt.value;
       if (val && typeof val === "object") {
+        if ((val as any).type === "select_places" && Array.isArray((val as any).places)) {
+          return {
+            kind: "select-places",
+            prompt: (val as any).prompt || "Select places to include in your itinerary",
+            places: (val as any).places as PlaceOption[],
+            minSelect: (val as any).min_select,
+            maxSelect: (val as any).max_select,
+          };
+        }
         if (Array.isArray((val as any).questions) && (val as any).questions.length) {
           return {
-            kind: "multi",
+            kind: "ask-multi",
             questions: (val as any).questions as AskHumanQuestion[],
           };
         }
@@ -124,16 +141,16 @@ const RunningAgent = () => {
         }
         
         return {
-          kind: "single",
+          kind: "ask-single",
           question: val.question.replace(/\(choices:\s*[^)]+\)/gi, "").trim(),
           choices,
         };
       }
     }
     return null;
-  }, [messages]);
+  }, [interrupt]);
 
-  const handleAnswer = useCallback(async (answer: string | AskHumanAnswersPayload) => {
+  const handleInterruptSubmit = useCallback(async (answer: string | AskHumanAnswersPayload | PlaceSelectionPayload) => {
     try {
       await submit(null, {
         command: {
@@ -201,14 +218,23 @@ const RunningAgent = () => {
               </MessageContent>
             </Message>
           ) : null}
-          {askHumanArgs && (
+          {interruptUi?.kind === "ask-single" || interruptUi?.kind === "ask-multi" ? (
             <QuestionCard
-              question={askHumanArgs.kind === "single" ? askHumanArgs.question : undefined}
-              choices={askHumanArgs.kind === "single" ? askHumanArgs.choices : undefined}
-              questions={askHumanArgs.kind === "multi" ? askHumanArgs.questions : undefined}
-              onAnswer={(answer) => void handleAnswer(answer)}
+              question={interruptUi.kind === "ask-single" ? interruptUi.question : undefined}
+              choices={interruptUi.kind === "ask-single" ? interruptUi.choices : undefined}
+              questions={interruptUi.kind === "ask-multi" ? interruptUi.questions : undefined}
+              onAnswer={(answer) => void handleInterruptSubmit(answer)}
             />
-          )}
+          ) : null}
+          {interruptUi?.kind === "select-places" ? (
+            <PlaceSelectionCard
+              prompt={interruptUi.prompt}
+              places={interruptUi.places}
+              minSelect={interruptUi.minSelect}
+              maxSelect={interruptUi.maxSelect}
+              onSubmit={(payload) => void handleInterruptSubmit(payload)}
+            />
+          ) : null}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>

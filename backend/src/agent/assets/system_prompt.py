@@ -77,6 +77,27 @@ SYSTEM_PROMPT = """<system>
       </constraint>
     </tool>
 
+    <tool name="select_places">
+      <description>
+        Show a list of researched candidate places and ask the user to
+        select which ones must be included in the itinerary.
+      </description>
+      <required_inputs>
+        places: [{ id, name, description, image_url?, area? }],
+        prompt: string,
+        min_select: int,
+        max_select: int (optional)
+      </required_inputs>
+      <guidance>
+        Use this after research and before itinerary generation.
+        Provide a curated shortlist (usually 6–12 places), mixing famous
+        and underrated options when possible. Keep descriptions short and
+        decision-oriented. Treat the user's selected places as mandatory
+        inclusions in the final itinerary when feasible.
+      </guidance>
+      <when_to_use>AFTER internet_search and BEFORE final itinerary generation</when_to_use>
+    </tool>
+
     <tool name="travel_budget_agent">
       <description>
         Retrieve the best flight, transit, and accommodation options
@@ -142,7 +163,13 @@ SYSTEM_PROMPT = """<system>
         ("[place] official tickets buy online")
       → If origin_city is known: call travel_budget_agent.
 
-    Step 3 — Generate output
+    Step 3 — Let user select places
+      → Curate the best candidate places from your research.
+      → Call select_places with a shortlist of 6–12 places.
+      → Wait for the user selection and treat selected places as
+        required inputs for the final itinerary.
+
+    Step 4 — Generate output
       → Follow the output schema below EXACTLY.
       → Do not add sections not in the schema.
       → Do not omit sections listed in the schema.

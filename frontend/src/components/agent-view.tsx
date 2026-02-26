@@ -48,6 +48,7 @@ import {
   usePromptInputAttachments,
 } from "@/components/ai-elements/prompt-input";
 import QuestionCard, { type AskHumanAnswersPayload, type AskHumanQuestion } from "./human-tool-call";
+import PlaceSelectionCard, { type PlaceSelectionPayload, type PlaceOption } from "./place-selection-card";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Persona, type PersonaState } from "./ai-elements/persona";
@@ -90,6 +91,9 @@ const models = [
   },
 ];
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const PromptInputAttachmentsDisplay = () => {
   const attachments = usePromptInputAttachments();
 
@@ -119,12 +123,13 @@ interface AgentViewProps {
 
 function determineAgentState(
   stream: ReturnType<typeof useStream>,
-  askHumanArgs:
-    | { kind: "single"; question: string; choices: string[] }
-    | { kind: "multi"; questions: AskHumanQuestion[] }
+  interruptUi:
+    | { kind: "ask-single"; question: string; choices: string[] }
+    | { kind: "ask-multi"; questions: AskHumanQuestion[] }
+    | { kind: "select-places"; prompt: string; places: PlaceOption[] }
     | null
 ): PersonaState {
-  if (askHumanArgs) {
+  if (interruptUi) {
     return "listening";
   }
 
@@ -181,6 +186,9 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
     apiUrl: "http://localhost:2024",
     threadId,
     onThreadId: (newThreadId) => {
+      if (!newThreadId || !UUID_REGEX.test(newThreadId)) {
+        return;
+      }
       setCreatedThreadId(newThreadId);
       if (!hasCreatedSessionRef.current && newThreadId && !urlSessionId) {
         hasCreatedSessionRef.current = true;
@@ -202,22 +210,31 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
 
   const selectedModelData = models.find((m) => m.id === model);
 
-  const askHumanArgs = useMemo(() => {
+  const interruptUi = useMemo(() => {
     const interruptedTask = stream.interrupt;
     
     if (interruptedTask) {
       const interrupt = interruptedTask as any;
       const val = interrupt.value;
       if (val && typeof val === "object") {
+        if ((val as any).type === "select_places" && Array.isArray((val as any).places)) {
+          return {
+            kind: "select-places" as const,
+            prompt: (val as any).prompt || "Select places to include in your itinerary",
+            places: (val as any).places as PlaceOption[],
+            minSelect: (val as any).min_select,
+            maxSelect: (val as any).max_select,
+          };
+        }
         if (Array.isArray((val as any).questions) && (val as any).questions.length) {
           return {
-            kind: "multi" as const,
+            kind: "ask-multi" as const,
             questions: (val as any).questions as AskHumanQuestion[],
           };
         }
         if ((val as any).question) {
           return {
-            kind: "single" as const,
+            kind: "ask-single" as const,
             question: (val as any).question,
             choices: (val as any).choices || [],
           };
@@ -227,7 +244,7 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
     return null;
   }, [stream.interrupt]);
 
-  const personaState = determineAgentState(stream, askHumanArgs);
+  const personaState = determineAgentState(stream, interruptUi as any);
 
   const handleSubmit = async (message: PromptInputMessage) => {
     const hasText = Boolean(message.text);
@@ -255,7 +272,7 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
     });
   };
 
-  const handleAnswer = useCallback(async (answer: string | AskHumanAnswersPayload) => {
+  const handleInterruptSubmit = useCallback(async (answer: string | AskHumanAnswersPayload | PlaceSelectionPayload) => {
     try {
       await stream.submit(null, {
         command: {
@@ -269,14 +286,14 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
   }, [stream]);
 
   const activityLabel = useMemo(() => {
-    if (askHumanArgs) return "Waiting for your answer...";
+    if (interruptUi) return "Waiting for your answer...";
     if (stream.isLoading) {
       const hasToolMessages = stream.messages.some((msg) => msg.type === "tool");
       if (hasToolMessages) return "Using tools...";
       return "Thinking...";
     }
     return "Ready to help";
-  }, [stream.isLoading, stream.messages, askHumanArgs]);
+  }, [stream.isLoading, stream.messages, interruptUi]);
 
   const visibleMessages = useMemo(() => {
     return stream.messages.filter((msg) => msg.type !== "tool");
@@ -404,14 +421,23 @@ export function AgentView({ onSessionCreated }: AgentViewProps) {
                 </Message>
               </motion.div>
             )}
-            {askHumanArgs && (
+            {interruptUi?.kind === "ask-single" || interruptUi?.kind === "ask-multi" ? (
               <QuestionCard
-                question={askHumanArgs.kind === "single" ? askHumanArgs.question : undefined}
-                choices={askHumanArgs.kind === "single" ? askHumanArgs.choices : undefined}
-                questions={askHumanArgs.kind === "multi" ? askHumanArgs.questions : undefined}
-                onAnswer={(answer) => void handleAnswer(answer)}
+                question={interruptUi.kind === "ask-single" ? interruptUi.question : undefined}
+                choices={interruptUi.kind === "ask-single" ? interruptUi.choices : undefined}
+                questions={interruptUi.kind === "ask-multi" ? interruptUi.questions : undefined}
+                onAnswer={(answer) => void handleInterruptSubmit(answer)}
               />
-            )}
+            ) : null}
+            {interruptUi?.kind === "select-places" ? (
+              <PlaceSelectionCard
+                prompt={interruptUi.prompt}
+                places={interruptUi.places}
+                minSelect={(interruptUi as any).minSelect}
+                maxSelect={(interruptUi as any).maxSelect}
+                onSubmit={(payload) => void handleInterruptSubmit(payload)}
+              />
+            ) : null}
           </motion.div>
         )}
       </div>

@@ -1,5 +1,5 @@
 from langchain.agents import create_agent
-from agent.tools import get_insta_reels, internet_search, ask_human
+from agent.tools import get_insta_reels, internet_search, ask_human, select_places
 from agent.assets.system_prompt import SYSTEM_PROMPT
 from agent.models.chatgpt import chatgptModel
 
@@ -15,7 +15,7 @@ from agent.models.chatgpt import chatgptModel
 
 
 graph = create_agent(
-    tools=[internet_search, ask_human],
+    tools=[internet_search, ask_human, select_places],
     system_prompt=SYSTEM_PROMPT,
     model=chatgptModel,
     middleware=[],
