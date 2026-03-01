@@ -4,6 +4,7 @@ from .google_place_photos import google_place_photos
 from .internet_search import internet_search
 from .select_places import select_places
 from .travel_budget_agent import travel_budget_agent
+from .google_maps_coordinates import google_maps_coordinates
 
 __all__ = [
     "get_insta_reels",
@@ -12,4 +13,5 @@ __all__ = [
     "select_places",
     "google_place_photos",
     "travel_budget_agent",
+    "google_maps_coordinates",
 ]
