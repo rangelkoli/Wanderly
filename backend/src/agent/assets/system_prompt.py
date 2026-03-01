@@ -100,6 +100,23 @@ SYSTEM_PROMPT = """<system>
       <when_to_use>AFTER internet_search and BEFORE final itinerary generation</when_to_use>
     </tool>
 
+    <tool name="google_place_photos">
+      <description>
+        Get official Google Places photo URLs for one or more place names.
+        This is the required source for place images.
+      </description>
+      <required_inputs>
+        locations: string[] (or string),
+        region: string (optional country code),
+        language: string (optional),
+        max_width: int (optional)
+      </required_inputs>
+      <when_to_use>
+        After research and before calling select_places, for all candidate
+        places that will be shown to the user.
+      </when_to_use>
+    </tool>
+
     <tool name="travel_budget_agent">
       <description>
         Retrieve the best flight, transit, and accommodation options
@@ -167,9 +184,9 @@ SYSTEM_PROMPT = """<system>
 
     Step 3 — Let user select places
       → Curate the best candidate places from your research.
+      → Call google_place_photos for all shortlisted place names.
       → Call select_places with a shortlist of 6–12 places.
-      → Include `image_url` for each place when available from
-        internet_search results/image_candidates.
+      → Use google_place_photos image_url values for every place card.
       → Wait for the user selection and treat selected places as
         required inputs for the final itinerary.
       → This step is mandatory for each new itinerary request unless
@@ -233,8 +250,8 @@ SYSTEM_PROMPT = """<system>
     - sessions: use 2-4 sessions/day when possible (Morning/Afternoon/Evening labels are fine).
     - items: use realistic chronological activities.
     - start_time/end_time: required for every item.
-    - image_url: REQUIRED for every item. Prefer URLs from internet_search
-      `results.image_url` or `image_candidates`.
+    - image_url: REQUIRED for every item. Always source image URLs from
+      google_place_photos.
     - If no reliable image URL is available, use:
       "https://placehold.co/600x400/e8f3ff/4b6584?text=Place+Image"
     - map_image_url: ALWAYS provide a placeholder image URL.
@@ -253,6 +270,8 @@ SYSTEM_PROMPT = """<system>
   <constraints>
     - Before producing final JSON, you MUST call select_places at least
       once and use the returned selections, unless user explicitly opts out.
+    - Before calling select_places, you MUST call google_place_photos for
+      the shortlisted place names and use those results for image_url.
     - Output format is strict JSON only; never return markdown sections.
     - NEVER invent a URL in sources. Only include links returned by tools.
     - If internet_search yields no URLs, return "sources": [].
