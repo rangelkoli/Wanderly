@@ -5,6 +5,9 @@ import { useStream } from "@langchain/langgraph-sdk/react";
 import { useParams, useSearchParams } from "react-router";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer } from "react-leaflet";
+
+import "leaflet/dist/leaflet.css";
 
 import { api } from "../../convex/_generated/api";
 import QuestionCard, {
@@ -24,6 +27,10 @@ type ItineraryStop = {
   name: string;
   category?: string;
   location?: string;
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
   start_time?: string;
   end_time?: string;
   image_url?: string;
@@ -89,6 +96,44 @@ function ItineraryView({ itinerary }: { itinerary: ItineraryPayload }) {
   const mapPlaceholder =
     activeDay?.route?.map_image_url ||
     "https://placehold.co/640x980/e8f3ff/4b6584?text=Google+Map+Placeholder";
+  const mapPoints = useMemo(() => {
+    if (!activeDay) {
+      return [] as Array<{
+        name: string;
+        location?: string;
+        start_time?: string;
+        end_time?: string;
+        lat: number;
+        lng: number;
+      }>;
+    }
+
+    return activeDay.sessions.flatMap((session) =>
+      session.items.flatMap((item) => {
+        const lat = item.coordinates?.lat;
+        const lng = item.coordinates?.lng;
+
+        if (typeof lat !== "number" || Number.isNaN(lat)) {
+          return [];
+        }
+
+        if (typeof lng !== "number" || Number.isNaN(lng)) {
+          return [];
+        }
+
+        return [
+          {
+            name: item.name,
+            location: item.location,
+            start_time: item.start_time,
+            end_time: item.end_time,
+            lat,
+            lng,
+          },
+        ];
+      }),
+    );
+  }, [activeDay]);
 
   if (!activeDay) {
     return null;
@@ -178,7 +223,46 @@ function ItineraryView({ itinerary }: { itinerary: ItineraryPayload }) {
       </main>
 
       <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <img src={mapPlaceholder} alt="Map placeholder" className="h-full w-full object-cover" />
+        {mapPoints.length ? (
+          <MapContainer
+            key={`day-map-${activeDay.day_number}`}
+            center={[mapPoints[0].lat, mapPoints[0].lng]}
+            zoom={13}
+            scrollWheelZoom={false}
+            className="h-full min-h-[360px] w-full"
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            {mapPoints.length > 1 ? (
+              <Polyline
+                positions={mapPoints.map((point) => [point.lat, point.lng])}
+                pathOptions={{ color: "#0891b2", weight: 3, opacity: 0.75 }}
+              />
+            ) : null}
+            {mapPoints.map((point, idx) => (
+              <CircleMarker
+                key={`${point.name}-${point.lat}-${point.lng}-${idx}`}
+                center={[point.lat, point.lng]}
+                radius={7}
+                pathOptions={{ color: "#0e7490", fillColor: "#06b6d4", fillOpacity: 0.9, weight: 2 }}
+              >
+                <Popup>
+                  <div className="text-xs">
+                    <p className="font-semibold">{idx + 1}. {point.name}</p>
+                    <p>{point.location || "Location"}</p>
+                    <p>
+                      {point.start_time || "--:--"} - {point.end_time || "--:--"}
+                    </p>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            ))}
+          </MapContainer>
+        ) : (
+          <img src={mapPlaceholder} alt="Map placeholder" className="h-full w-full object-cover" />
+        )}
       </aside>
     </div>
   );
