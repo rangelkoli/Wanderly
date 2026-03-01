@@ -3,7 +3,7 @@ from langchain.agents import create_agent
 from agent.assets.system_prompt import SYSTEM_PROMPT
 from agent.models.chatgpt import chatgptModel
 from agent.tools import ask_human, google_place_photos, internet_search, select_places, google_maps_coordinates
-
+from agent.models.ollama import ollamaModel
 # model = ChatOpenAI(
 #     model="gpt-5",
 #     temperature=0.1,
