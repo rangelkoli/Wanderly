@@ -129,20 +129,29 @@ SYSTEM_PROMPT = """<system>
       </when_to_use>
     </tool>
 
-    <tool name="travel_budget_agent">
+    <tool name="flights_finder">
       <description>
-        Retrieve the best flight, transit, and accommodation options
-        for the destination given the user's budget tier.
+        Get live Google Flights data via SerpApi for route/date combinations.
+        Use this for realistic flight options and pricing context.
       </description>
       <required_inputs>
-        destination: string,
-        origin: string (if known),
-        budget_tier: "low" | "mid" | "high",
-        travel_dates: string
+        origin: string (IATA airport code, e.g. "JFK"),
+        destination: string (IATA airport code, e.g. "CDG"),
+        departure_date: string (YYYY-MM-DD)
       </required_inputs>
+      <optional_inputs>
+        return_date: string (YYYY-MM-DD),
+        adults: int,
+        travel_class: "ECONOMY" | "PREMIUM_ECONOMY" | "BUSINESS" | "FIRST",
+        max_price: int,
+        currency: string,
+        language: string,
+        country: string
+      </optional_inputs>
       <when_to_use>
-        After internet_search, only if the user's origin city or
-        transportation budget is known or inferrable from conversation.
+        After core place research, when origin + destination + travel dates
+        are known (or can be inferred reliably). Use this before final output
+        if the user asks about flights, transportation budget, or best airfare.
       </when_to_use>
     </tool>
   </tools>
@@ -192,7 +201,8 @@ SYSTEM_PROMPT = """<system>
       → Call additional interest-specific searches if warranted.
       → For each stop that charges entry, call internet_search
         ("[place] official tickets buy online")
-      → If origin_city is known: call travel_budget_agent.
+      → If origin + destination IATA codes and travel dates are known,
+        call flights_finder for current airfare options.
 
     Step 3 — Let user select places
       → Curate the best candidate places from your research.
@@ -300,6 +310,8 @@ SYSTEM_PROMPT = """<system>
       sessions.items across the trip.
     - Before final JSON output, call google_maps_coordinates for each
       final stop and include returned lat/lng in items[].coordinates.
+    - If you include any airfare claims, base them on flights_finder data;
+      do not invent routes, prices, or airline options.
   </constraints>
 
   <!-- ═══════════════════════════════════════════
