@@ -11,6 +11,7 @@ import RunningAgent from "./components/running-agent";
 import { Home } from "./components/home";
 import { Sidebar } from "./components/sidebar";
 import { useTheme } from "./components/theme-provider";
+import FlightDetailsPage from "./components/flight-details-page";
 import { Moon, Sun, Menu, X } from "lucide-react";
 import {
   BrowserRouter,
@@ -107,6 +108,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <RunningAgent />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/flights/details"
+          element={
+            <ProtectedRoute>
+              <FlightDetailsPage />
             </ProtectedRoute>
           }
         />

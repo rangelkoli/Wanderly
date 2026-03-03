@@ -18,6 +18,7 @@ import PlaceSelectionCard, {
   type PlaceOption,
   type PlaceSelectionPayload,
 } from "./place-selection-card";
+import FlightsResultsCard, { parseFlightsData } from "./flights-results-card";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -441,6 +442,10 @@ const RunningAgent = () => {
     return parseItineraryPayload(latestAssistantContent);
   }, [latestAssistantContent]);
 
+  const flightsPayload = useMemo(() => {
+    return parseFlightsData(latestAssistantContent);
+  }, [latestAssistantContent]);
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#eef6ff_0%,#f7fbff_40%,#f8f9fb_100%)] px-4 py-8 md:px-8">
       {interruptUi?.kind === "select-places" ? (
@@ -485,6 +490,8 @@ const RunningAgent = () => {
 
           {itineraryPayload ? (
             <ItineraryView itinerary={itineraryPayload} />
+          ) : flightsPayload ? (
+            <FlightsResultsCard data={flightsPayload} />
           ) : latestAssistantContent ? (
             <article className="mt-6 whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 md:text-base">
               {latestAssistantContent}
