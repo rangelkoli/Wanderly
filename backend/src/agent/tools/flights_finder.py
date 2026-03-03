@@ -1,8 +1,49 @@
 """Flight search tool powered by fast-flights (Google Flights scraper)."""
 
 import json
-from typing import Literal
+import re
+from typing import Literal, List, Any, Union
 from fast_flights import FlightData, Passengers, get_flights
+from langgraph.types import interrupt
+from typing_extensions import TypedDict
+
+
+def _parse_int(value: Any, default: int = 0) -> int:
+    """Safely parse a value to int, handling strings like '$288', 'typical', etc."""
+    if value is None:
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        # Extract all digits and join them
+        digits = re.findall(r'\d+', value)
+        if digits:
+            return int(digits[0])
+        return default
+    return default
+
+
+def _parse_str(value: Any, default: str = "N/A") -> str:
+    """Safely parse a value to string."""
+    if value is None:
+        return default
+    return str(value)
+
+
+class FlightOption(TypedDict, total=False):
+    option_id: int
+    id: str
+    price: int
+    airline: str
+    departure_airport: str
+    arrival_airport: str
+    departure_time: str
+    arrival_time: str
+    duration: str
+    stops: int
+    cabin: str
 
 
 def flights_finder(
@@ -11,13 +52,13 @@ def flights_finder(
     departure_date: str,
     return_date: str | None = None,
     adults: int = 1,
-    travel_class: Literal["economy", "premium_economy", "business", "first"] = "economy",
+    travel_class: Literal["economy", "premium-economy", "business", "first"] = "economy",
     max_price: int | None = None,
     currency: str = "USD",
     language: str = "en",
     country: str = "us",
 ) -> str:
-    """Fetch Google Flights results using fast-flights and return JSON."""
+    """Get live Google Flights data and let user select their preferred flight."""
     if not origin.strip() or not destination.strip():
         raise ValueError("origin and destination are required.")
 
@@ -53,40 +94,62 @@ def flights_finder(
     except Exception as e:
         raise ValueError(f"Failed to fetch flights: {str(e)}")
 
-    flights_data = []
+    flights_data: List[FlightOption] = []
     
     if result.flights:
-        for flight in result.flights:
-            flight_info = {
-                "id": flight.id if hasattr(flight, 'id') else str(hash(str(flight))),
-                "price": flight.price if hasattr(flight, 'price') else result.current_price,
-                "airline": flight.airline if hasattr(flight, 'airline') else "Unknown",
-                "departure_airport": flight.departure_airport if hasattr(flight, 'departure_airport') else origin.strip().upper(),
-                "arrival_airport": flight.arrival_airport if hasattr(flight, 'arrival_airport') else destination.strip().upper(),
-                "departure_time": flight.departure_time if hasattr(flight, 'departure_time') else "N/A",
-                "arrival_time": flight.arrival_time if hasattr(flight, 'arrival_time') else "N/A",
-                "duration": flight.duration if hasattr(flight, 'duration') else "N/A",
-                "stops": flight.stops if hasattr(flight, 'stops') else 0,
-                "cabin": flight.cabin if hasattr(flight, 'cabin') else travel_class,
+        for i, flight in enumerate(result.flights):
+            flight_dict = flight.__dict__ if hasattr(flight, '__dict__') else {}
+            
+            flight_info: FlightOption = {
+                "option_id": i + 1,
+                "id": _parse_str(flight_dict.get("id"), f"flight_{i}"),
+                "price": _parse_int(flight_dict.get("price"), _parse_int(result.current_price)),
+                "airline": _parse_str(flight_dict.get("airline"), "Unknown"),
+                "departure_airport": _parse_str(flight_dict.get("departure_airport"), origin.strip().upper()),
+                "arrival_airport": _parse_str(flight_dict.get("arrival_airport"), destination.strip().upper()),
+                "departure_time": _parse_str(flight_dict.get("departure_time")),
+                "arrival_time": _parse_str(flight_dict.get("arrival_time")),
+                "duration": _parse_str(flight_dict.get("duration")),
+                "stops": _parse_int(flight_dict.get("stops")),
+                "cabin": _parse_str(flight_dict.get("cabin"), travel_class),
             }
             flights_data.append(flight_info)
 
-    output = {
-        "provider": "fast_flights_google_flights",
-        "search_parameters": {
-            "origin": origin.strip().upper(),
-            "destination": destination.strip().upper(),
-            "departure_date": departure_date,
-            "return_date": return_date,
-            "adults": normalized_adults,
-            "travel_class": travel_class,
-            "currency": currency,
-            "language": language,
-            "country": country,
-        },
-        "current_price": result.current_price,
-        "price_level": result.price_level if hasattr(result, 'price_level') else "N/A",
-        "flights": flights_data,
-    }
+    if not flights_data:
+        return json.dumps({
+            "type": "no_flights_found",
+            "message": f"No flights found from {origin.strip().upper()} to {destination.strip().upper()} on {departure_date}",
+            "search_parameters": {
+                "origin": origin.strip().upper(),
+                "destination": destination.strip().upper(),
+                "departure_date": departure_date,
+                "return_date": return_date,
+            }
+        }, indent=2)
 
-    return json.dumps(output, indent=2)
+    # Use interrupt to create a selection UI in the frontend
+    answer = interrupt(
+        {
+            "type": "select_flight",
+            "prompt": f"Found {len(flights_data)} flight options from {origin.strip().upper()} to {destination.strip().upper()}. Please select your preferred flight.",
+            "flights": flights_data,
+            "search_params": {
+                "origin": origin.strip().upper(),
+                "destination": destination.strip().upper(),
+                "departure_date": departure_date,
+                "return_date": return_date,
+                "adults": normalized_adults,
+                "travel_class": travel_class,
+                "trip_type": trip_type,
+                "currency": currency,
+            },
+            "price_info": {
+                "current_price": _parse_int(result.current_price),
+            },
+        }
+    )
+
+    # Return the user's selection
+    if isinstance(answer, dict):
+        return json.dumps(answer)
+    return json.dumps({"selected_flight": answer})

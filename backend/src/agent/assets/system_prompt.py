@@ -131,8 +131,9 @@ SYSTEM_PROMPT = """<system>
 
     <tool name="flights_finder">
       <description>
-        Get live Google Flights data via SerpApi for route/date combinations.
+        Get live Google Flights data for route/date combinations.
         Use this for realistic flight options and pricing context.
+        This tool will return flight options that the user can select from.
       </description>
       <required_inputs>
         origin: string (IATA airport code, e.g. "JFK"),
@@ -142,17 +143,42 @@ SYSTEM_PROMPT = """<system>
       <optional_inputs>
         return_date: string (YYYY-MM-DD),
         adults: int,
-        travel_class: "ECONOMY" | "PREMIUM_ECONOMY" | "BUSINESS" | "FIRST",
+        travel_class: "economy" | "premium_economy" | "business" | "first",
         max_price: int,
         currency: string,
         language: string,
         country: string
       </optional_inputs>
+      <output_behavior>
+        This tool returns flight options with type "select_flight".
+        The response will include multiple flight options with:
+        - option_id: numbered option (1, 2, 3...)
+        - airline, price, departure/arrival times, duration, stops
+        - prompt: message to show the user
+        
+        After receiving flight options, ask the user to select their
+        preferred flight by specifying the option number or flight details.
+        Wait for their selection before proceeding.
+      </output_behavior>
       <when_to_use>
         After core place research, when origin + destination + travel dates
         are known (or can be inferred reliably). Use this before final output
         if the user asks about flights, transportation budget, or best airfare.
       </when_to_use>
+      <example>
+        User: "I want to fly from NYC to Paris in June"
+        You call: flights_finder with origin="JFK", destination="CDG", departure_date="2025-06-15"
+        
+        Tool returns flight options. You show the options to the user and ask:
+        "I found several flights from JFK to CDG on June 15th. Here are the options:
+        Option 1: Air France, $650, 7h 30m, Nonstop
+        Option 2: Delta, $620, 7h 45m, Nonstop
+        Option 3: United, $580, 8h 15m, 1 stop
+        
+        Which option would you prefer?"
+        
+        Wait for the user's selection, then continue with their choice.
+      </example>
     </tool>
   </tools>
 
@@ -201,8 +227,14 @@ SYSTEM_PROMPT = """<system>
       → Call additional interest-specific searches if warranted.
       → For each stop that charges entry, call internet_search
         ("[place] official tickets buy online")
+
+    Step 2b — Flight Search (if applicable)
       → If origin + destination IATA codes and travel dates are known,
         call flights_finder for current airfare options.
+      → Present the flight options to the user clearly (option numbers, prices, times).
+      → Wait for the user to select their preferred flight.
+      → Note: After user selection, include the selected flight details
+        in the final itinerary output if relevant.
 
     Step 3 — Let user select places
       → Curate the best candidate places from your research.
@@ -312,6 +344,9 @@ SYSTEM_PROMPT = """<system>
       final stop and include returned lat/lng in items[].coordinates.
     - If you include any airfare claims, base them on flights_finder data;
       do not invent routes, prices, or airline options.
+    - When flights_finder returns options, ALWAYS present them to the user
+      and wait for their selection before proceeding. Never assume which
+      flight they want.
   </constraints>
 
   <!-- ═══════════════════════════════════════════

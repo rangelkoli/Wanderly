@@ -18,7 +18,7 @@ import PlaceSelectionCard, {
   type PlaceOption,
   type PlaceSelectionPayload,
 } from "./place-selection-card";
-import FlightsResultsCard, { parseFlightsData } from "./flights-results-card";
+import FlightsResultsCard, { type FlightOption } from "./flights-results-card";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -355,6 +355,12 @@ const RunningAgent = () => {
         minSelect?: number;
         maxSelect?: number | null;
       }
+    | {
+        kind: "select-flight";
+        prompt: string;
+        flights: FlightOption[];
+        searchParams: any;
+      }
     | null
   >(() => {
     if (!interrupt) {
@@ -364,6 +370,15 @@ const RunningAgent = () => {
     const val = (interrupt as any).value;
     if (!val || typeof val !== "object") {
       return null;
+    }
+
+    if (val.type === "select_flight" && Array.isArray(val.flights)) {
+      return {
+        kind: "select-flight",
+        prompt: val.prompt || "Select a flight for your trip",
+        flights: val.flights as FlightOption[],
+        searchParams: val.search_params,
+      };
     }
 
     if (val.type === "select_places" && Array.isArray(val.places)) {
@@ -403,7 +418,7 @@ const RunningAgent = () => {
   }, [interrupt]);
 
   const handleInterruptSubmit = useCallback(
-    async (answer: string | AskHumanAnswersPayload | PlaceSelectionPayload) => {
+    async (answer: string | AskHumanAnswersPayload | PlaceSelectionPayload | { selected_flight: FlightOption; flight_option_id?: number }) => {
       try {
         await submit(null, {
           command: {
@@ -442,10 +457,6 @@ const RunningAgent = () => {
     return parseItineraryPayload(latestAssistantContent);
   }, [latestAssistantContent]);
 
-  const flightsPayload = useMemo(() => {
-    return parseFlightsData(latestAssistantContent);
-  }, [latestAssistantContent]);
-
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#eef6ff_0%,#f7fbff_40%,#f8f9fb_100%)] px-4 py-8 md:px-8">
       {interruptUi?.kind === "select-places" ? (
@@ -455,6 +466,29 @@ const RunningAgent = () => {
           minSelect={interruptUi.minSelect}
           maxSelect={interruptUi.maxSelect}
           onSubmit={(payload) => void handleInterruptSubmit(payload)}
+        />
+      ) : null}
+
+      {interruptUi?.kind === "select-flight" ? (
+        <FlightsResultsCard
+          data={{
+            search_parameters: interruptUi.searchParams || {
+              origin: "UNKNOWN",
+              destination: "UNKNOWN",
+              departure_date: "",
+              adults: 1,
+              travel_class: "economy",
+            },
+            current_price: interruptUi.flights[0]?.price || 0,
+            price_level: "N/A",
+            flights: interruptUi.flights,
+          }}
+          onConfirmFlight={(flight) => {
+            void handleInterruptSubmit({
+              selected_flight: flight,
+              flight_option_id: flight.option_id,
+            });
+          }}
         />
       ) : null}
 
@@ -490,8 +524,6 @@ const RunningAgent = () => {
 
           {itineraryPayload ? (
             <ItineraryView itinerary={itineraryPayload} />
-          ) : flightsPayload ? (
-            <FlightsResultsCard data={flightsPayload} />
           ) : latestAssistantContent ? (
             <article className="mt-6 whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-700 md:text-base">
               {latestAssistantContent}
