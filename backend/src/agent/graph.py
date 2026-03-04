@@ -1,7 +1,7 @@
 from langchain.agents import create_agent
 
 from agent.assets.system_prompt import SYSTEM_PROMPT
-from agent.models import chatgptModel, ollamaModel, openrouterModel
+from agent.models import chatgptModel, ollamaModel, openrouterModel, inceptionModel
 from agent.tools import (
     ask_human,
     flights_finder,
@@ -22,6 +22,6 @@ graph = create_agent(
         flights_finder,
     ],
     system_prompt=SYSTEM_PROMPT,
-    model=chatgptModel,
+    model=inceptionModel,
     middleware=[],
 )
