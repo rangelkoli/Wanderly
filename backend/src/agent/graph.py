@@ -1,7 +1,7 @@
 from langchain.agents import create_agent
 
 from agent.assets.system_prompt import SYSTEM_PROMPT
-from agent.models import chatgptModel, ollamaModel
+from agent.models import chatgptModel, ollamaModel, openrouterModel
 from agent.tools import (
     ask_human,
     flights_finder,

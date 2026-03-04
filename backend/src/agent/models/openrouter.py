@@ -1,12 +1,8 @@
-from langchain.chat_models import init_chat_model
+from langchain_openai import ChatOpenAI
 from os import getenv
 
-openrouterModel = init_chat_model(
-    model="step-3.5-flash:free",
-    model_provider="stepfun",
+openrouterModel = ChatOpenAI(
+    model="google/gemini-3.1-flash-lite-preview",
     base_url="https://openrouter.ai/api/v1",
-    api_key=getenv("OPENROUTER_API_KEY"),
-    default_headers={
-    
-    }
+    api_key=lambda: getenv("OPENROUTER_API_KEY") or "",
 )
