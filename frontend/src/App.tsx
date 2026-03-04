@@ -12,6 +12,7 @@ import { Home } from "./components/home";
 import { Sidebar } from "./components/sidebar";
 import { useTheme } from "./components/theme-provider";
 import FlightDetailsPage from "./components/flight-details-page";
+import LandingPage from "./components/landing/LandingPage";
 import { Moon, Sun, Menu, X } from "lucide-react";
 import {
   BrowserRouter,
@@ -120,6 +121,7 @@ export default function App() {
           }
         />
         <Route path="/login" element={<AuthForms />} />
+        <Route path="/landing" element={<LandingPage />} />
       </Routes>
     </BrowserRouter>
   );

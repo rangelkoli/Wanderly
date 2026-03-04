@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#1a1a2e"/>
+  <circle cx="400" cy="250" r="120" fill="none" stroke="#89AACC" stroke-width="2" opacity="0.3"/>
+  <circle cx="400" cy="250" r="80" fill="none" stroke="#4E85BF" stroke-width="1.5" opacity="0.5"/>
+  <circle cx="400" cy="250" r="40" fill="#16213e"/>
+  <text x="400" y="258" text-anchor="middle" font-family="serif" font-size="28" fill="#89AACC" font-style="italic">W</text>
+  <rect x="200" y="420" width="400" height="2" fill="#89AACC" opacity="0.2"/>
+  <text x="400" y="460" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#f5f5f5" letter-spacing="8">WANDERLY</text>
+  <text x="400" y="490" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#888888" letter-spacing="4">AI TRIP PLANNER</text>
+  <rect x="100" y="100" width="60" height="60" rx="8" fill="#16213e"/>
+  <rect x="640" y="100" width="60" height="60" rx="8" fill="#16213e"/>
+  <rect x="100" y="500" width="60" height="60" rx="8" fill="#16213e"/>
+  <rect x="640" y="500" width="60" height="60" rx="8" fill="#16213e"/>
+</svg>

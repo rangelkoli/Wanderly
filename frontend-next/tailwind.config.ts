@@ -10,6 +10,10 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        body: ["var(--font-body)", "Inter", "sans-serif"],
+        display: ["var(--font-display)", "Instrument Serif", "serif"],
+      },
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
@@ -51,6 +55,13 @@ export default {
           "4": "hsl(var(--chart-4))",
           "5": "hsl(var(--chart-5))",
         },
+        // Landing page colors
+        "lp-bg": "hsl(var(--lp-bg))",
+        "lp-surface": "hsl(var(--lp-surface))",
+        "lp-text": "hsl(var(--lp-text))",
+        "lp-muted": "hsl(var(--lp-muted))",
+        "lp-stroke": "hsl(var(--lp-stroke))",
+        "lp-accent": "hsl(var(--lp-accent))",
       },
       borderRadius: {
         lg: "var(--radius)",
