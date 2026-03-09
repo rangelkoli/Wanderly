@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import Literal, List, Any, Union
+from typing import Any, List
 from fast_flights import FlightData, Passengers, get_flights
 from langgraph.types import interrupt
 from typing_extensions import TypedDict
@@ -32,6 +32,13 @@ def _parse_str(value: Any, default: str = "N/A") -> str:
     return str(value)
 
 
+def _normalize_travel_class(value: str) -> str:
+    normalized = (value or "economy").strip().replace("-", "_").lower()
+    if normalized in {"economy", "premium_economy", "business", "first"}:
+        return normalized
+    return "economy"
+
+
 class FlightOption(TypedDict, total=False):
     option_id: int
     id: str
@@ -46,13 +53,36 @@ class FlightOption(TypedDict, total=False):
     cabin: str
 
 
+def _parse_duration_minutes(value: Any) -> int:
+    """Convert duration strings like '14h 35m' into minutes for ranking."""
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return int(value)
+
+    text = str(value).lower()
+    hours_match = re.search(r"(\d+)\s*h", text)
+    minutes_match = re.search(r"(\d+)\s*m", text)
+    hours = int(hours_match.group(1)) if hours_match else 0
+    minutes = int(minutes_match.group(1)) if minutes_match else 0
+    return (hours * 60) + minutes
+
+
+def _flight_score(flight: FlightOption) -> float:
+    """Lower scores are better: prioritize fewer stops, lower fares, and shorter trips."""
+    price = _parse_int(flight.get("price"))
+    stops = _parse_int(flight.get("stops"))
+    duration_minutes = _parse_duration_minutes(flight.get("duration"))
+    return price + (stops * 200) + (duration_minutes * 0.5)
+
+
 def flights_finder(
     origin: str,
     destination: str,
     departure_date: str,
     return_date: str | None = None,
     adults: int = 1,
-    travel_class: Literal["economy", "premium-economy", "business", "first"] = "economy",
+    travel_class: str = "economy",
     max_price: int | None = None,
     currency: str = "USD",
     language: str = "en",
@@ -63,6 +93,8 @@ def flights_finder(
         raise ValueError("origin and destination are required.")
 
     normalized_adults = max(1, min(adults, 9))
+    normalized_travel_class = _normalize_travel_class(travel_class)
+    normalized_seat = normalized_travel_class.replace("_", "-")
 
     trip_type = "round-trip" if return_date else "one-way"
     
@@ -73,7 +105,7 @@ def flights_finder(
             to_airport=destination.strip().upper(),
         )
     ]
-
+    print(f"Fetching flights for {origin.strip().upper()} to {destination.strip().upper()} on {departure_date} with {normalized_adults} adult(s) in {normalized_travel_class} class.")
     if return_date:
         flight_data_list.append(
             FlightData(
@@ -87,10 +119,12 @@ def flights_finder(
         result = get_flights(
             flight_data=flight_data_list,
             trip=trip_type,
-            seat=travel_class,
+            seat=normalized_seat,  # type: ignore[arg-type]
             passengers=Passengers(adults=normalized_adults),
             fetch_mode="fallback",
         )
+        print(f"Fetched {len(result.flights) if result.flights else 0} flights. Current price: {result.current_price}")
+        print(f"Raw flight data: {result.flights}")
     except Exception as e:
         raise ValueError(f"Failed to fetch flights: {str(e)}")
 
@@ -111,7 +145,7 @@ def flights_finder(
                 "arrival_time": _parse_str(flight_dict.get("arrival_time")),
                 "duration": _parse_str(flight_dict.get("duration")),
                 "stops": _parse_int(flight_dict.get("stops")),
-                "cabin": _parse_str(flight_dict.get("cabin"), travel_class),
+                "cabin": _parse_str(flight_dict.get("cabin"), normalized_travel_class),
             }
             flights_data.append(flight_info)
 
@@ -127,19 +161,25 @@ def flights_finder(
             }
         }, indent=2)
 
+    ranked_flights = sorted(flights_data, key=_flight_score)[:3]
+    for index, flight in enumerate(ranked_flights, start=1):
+        flight["option_id"] = index
+
     # Use interrupt to create a selection UI in the frontend
     answer = interrupt(
         {
             "type": "select_flight",
-            "prompt": f"Found {len(flights_data)} flight options from {origin.strip().upper()} to {destination.strip().upper()}. Please select your preferred flight.",
-            "flights": flights_data,
+            "prompt": f"I found the top 3 flight options from {origin.strip().upper()} to {destination.strip().upper()}. Please select your preferred flight.",
+            "flight_options": ranked_flights,
+            "options_count": len(ranked_flights),
+            "flights": ranked_flights,
             "search_params": {
                 "origin": origin.strip().upper(),
                 "destination": destination.strip().upper(),
                 "departure_date": departure_date,
                 "return_date": return_date,
                 "adults": normalized_adults,
-                "travel_class": travel_class,
+                "travel_class": normalized_travel_class,
                 "trip_type": trip_type,
                 "currency": currency,
             },
@@ -153,3 +193,15 @@ def flights_finder(
     if isinstance(answer, dict):
         return json.dumps(answer)
     return json.dumps({"selected_flight": answer})
+
+
+if __name__ == "__main__":
+    # Example usage
+    print(flights_finder(
+        origin="JFK",
+        destination="LAX",
+        departure_date="2024-12-01",
+        return_date="2024-12-10",
+        adults=1,
+        travel_class="economy"
+    ))

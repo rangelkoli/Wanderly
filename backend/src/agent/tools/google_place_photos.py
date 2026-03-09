@@ -28,7 +28,7 @@ def _build_photo_url(photo_reference: str, api_key: str, max_width: int) -> str:
     query = urlencode(
         {
             "maxwidth": max(200, min(max_width, 1600)),
-            "photo_reference": photo_reference,
+            "photoreference": photo_reference,
             "key": api_key,
         }
     )

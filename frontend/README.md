@@ -1,45 +1,27 @@
-# Welcome to your Convex + React (Vite) + Convex Auth app
+This is a [Next.js](https://nextjs.org) frontend with Supabase-backed login and signup screens built with shadcn/ui primitives.
 
-This is a [Convex](https://convex.dev/) project created with [`npm create convex`](https://www.npmjs.com/package/create-convex).
+## Getting Started
 
-After the initial setup (<2 minutes) you'll have a working full-stack app using:
+Create `frontend/.env.local` with:
 
-- Convex as your backend (database, server logic)
-- [React](https://react.dev/) as your frontend (web page interactivity)
-- [Vite](https://vitest.dev/) for optimized web hosting
-- [Tailwind](https://tailwindcss.com/) for building great looking UI
-- [Convex Auth](https://labs.convex.dev/auth) for authentication
-
-## Get started
-
-If you just cloned this codebase and didn't use `npm create convex`, run:
-
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-supabase-publishable-key
+LANGGRAPH_API_URL=http://127.0.0.1:2024
+LANGGRAPH_ASSISTANT_ID=agent
 ```
-npm install
+
+First, run the development server:
+
+```bash
 npm run dev
 ```
 
-If you're reading this README on GitHub and want to use this template, run:
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-```
-npm create convex@latest -- -t react-vite-convexauth
-```
+Routes:
 
-For more information on how to configure Convex Auth, check out the [Convex Auth docs](https://labs.convex.dev/auth/).
-
-For more examples of different Convex Auth flows, check out this [example repo](https://www.convex.dev/templates/convex-auth).
-
-## Learn more
-
-To learn more about developing your project with Convex, check out:
-
-- The [Tour of Convex](https://docs.convex.dev/get-started) for a thorough introduction to Convex principles.
-- The rest of [Convex docs](https://docs.convex.dev/) to learn about all Convex features.
-- [Stack](https://stack.convex.dev/) for in-depth articles on advanced topics.
-
-## Join the community
-
-Join thousands of developers building full-stack apps with Convex:
-
-- Join the [Convex Discord community](https://convex.dev/community) to get help in real-time.
-- Follow [Convex on GitHub](https://github.com/get-convex/), star and contribute to the open-source implementation of Convex.
+- `/` shows the landing page and current Supabase session state.
+- `/login` signs users in with email and password.
+- `/signup` creates new accounts with Supabase Auth.
+- `/sessions/[sessionId]` loads a LangGraph thread, shows its current state, and streams new backend events for that session.
