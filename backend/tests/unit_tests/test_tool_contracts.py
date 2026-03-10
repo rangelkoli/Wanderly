@@ -126,7 +126,7 @@ def test_flights_finder_uses_interrupt_payload(monkeypatch) -> None:
         )
     )
 
-    assert selected == {"option_id": 1}
+    assert selected == {"selected_flight": {"option_id": 1}}
     assert captured["type"] == "select_flight"
     assert captured["options_count"] == 1
     assert captured["search_params"]["origin"] == "JFK"
@@ -211,7 +211,7 @@ def test_flights_finder_limits_results_to_top_three(monkeypatch) -> None:
 
     shown_flights = captured["flights"]
 
-    assert selected == {"option_id": 1}
+    assert selected == {"selected_flight": {"option_id": 1}}
     assert captured["options_count"] == 3
     assert [flight["id"] for flight in shown_flights] == [
         "best-value",
@@ -219,6 +219,33 @@ def test_flights_finder_limits_results_to_top_three(monkeypatch) -> None:
         "cheap-stop",
     ]
     assert [flight["option_id"] for flight in shown_flights] == [1, 2, 3]
+
+
+def test_flights_finder_returns_structured_error_when_fetch_fails(monkeypatch) -> None:
+    """Fetch failures should degrade to a structured response instead of raising."""
+
+    attempts: list[str] = []
+
+    def fake_get_flights(*args, **kwargs):
+        attempts.append(kwargs["fetch_mode"])
+        raise RuntimeError("401 Unauthorized")
+
+    monkeypatch.delenv("FAST_FLIGHTS_FETCH_MODE", raising=False)
+    monkeypatch.delenv("FAST_FLIGHTS_ALLOW_REMOTE_FALLBACK", raising=False)
+    monkeypatch.setattr(flights_finder_module, "get_flights", fake_get_flights)
+
+    payload = json.loads(
+        flights_finder_module.flights_finder(
+            origin="jfk",
+            destination="cdg",
+            departure_date="2026-06-10",
+        )
+    )
+
+    assert attempts == ["common", "local"]
+    assert payload["type"] == "no_flights_found"
+    assert payload["error"]["code"] == "flight_search_unavailable"
+    assert payload["search_parameters"]["origin"] == "JFK"
 
 
 def test_flights_finder_rejects_invalid_route(monkeypatch) -> None:
@@ -240,29 +267,61 @@ def test_flights_finder_rejects_invalid_route(monkeypatch) -> None:
         raise AssertionError("Expected ValueError for missing required route fields")
 
 
-def test_google_place_photos_uses_places_photo_query_contract(monkeypatch) -> None:
-    """Photo URLs should use the expected Google Places Photo API query fields."""
+def test_google_place_photos_uses_places_api_new_contract(monkeypatch) -> None:
+    """Photo lookup should use Places API (New) search and media endpoints."""
 
     monkeypatch.setenv("GOOGLE_MAPS_API_KEY", "test-key")
-    monkeypatch.setattr(
-        google_place_photos_module,
-        "_get_json",
-        lambda url, params: {
-            "status": "OK",
-            "candidates": [
-                {
-                    "name": "Eiffel Tower",
-                    "place_id": "place-123",
-                    "formatted_address": "Paris, France",
-                    "photos": [{"photo_reference": "photo-ref-abc"}],
-                }
-            ],
-        },
-    )
+    calls: list[dict[str, object]] = []
+
+    def fake_request_json(url: str, **kwargs):
+        calls.append({"url": url, **kwargs})
+        if url == google_place_photos_module.GOOGLE_TEXT_SEARCH_URL:
+            return {
+                "places": [
+                    {
+                        "id": "place-123",
+                        "name": "places/place-123",
+                        "displayName": {"text": "Eiffel Tower"},
+                        "formattedAddress": "Paris, France",
+                        "photos": [
+                            {
+                                "name": "places/place-123/photos/photo-abc",
+                                "authorAttributions": [{"displayName": "Google User"}],
+                            }
+                        ],
+                    }
+                ]
+            }
+
+        return {
+            "name": "places/place-123/photos/photo-abc/media",
+            "photoUri": "https://lh3.googleusercontent.com/photo-abc=w800-h600",
+        }
+
+    monkeypatch.setattr(google_place_photos_module, "_request_json", fake_request_json)
 
     payload = json.loads(google_place_photos_module.google_place_photos("Eiffel Tower"))
     result = payload["results"][0]
 
     assert result["status"] == "OK"
-    assert "photoreference=photo-ref-abc" in result["image_url"]
-    assert "photo_reference=" not in result["image_url"]
+    assert result["image_url"] == "https://lh3.googleusercontent.com/photo-abc=w800-h600"
+    assert result["photo_name"] == "places/place-123/photos/photo-abc"
+    assert result["photo_attributions"] == [{"displayName": "Google User"}]
+
+    assert calls[0]["method"] == "POST"
+    assert calls[0]["payload"] == {"textQuery": "Eiffel Tower", "languageCode": "en"}
+    assert calls[0]["headers"] == {
+        "X-Goog-Api-Key": "test-key",
+        "X-Goog-FieldMask": (
+            "places.id,"
+            "places.name,"
+            "places.displayName,"
+            "places.formattedAddress,"
+            "places.photos"
+        ),
+    }
+    assert calls[1]["params"] == {
+        "maxWidthPx": 800,
+        "skipHttpRedirect": "true",
+        "key": "test-key",
+    }

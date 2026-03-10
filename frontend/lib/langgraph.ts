@@ -39,16 +39,19 @@ export type InterruptQuestion = {
 
 export type FlightOption = {
   option_id: number;
-  id?: string;
   price?: number;
   airline?: string;
   departure_airport?: string;
   arrival_airport?: string;
   departure_time?: string;
   arrival_time?: string;
+  arrival_time_ahead?: string;
   duration?: string;
   stops?: number;
   cabin?: string;
+  is_best?: boolean;
+  delay?: string;
+  price_level?: string;
 };
 
 export type SessionInterrupt = {
@@ -222,7 +225,6 @@ function normalizeFlightOption(raw: unknown): FlightOption | null {
 
   return {
     option_id: optionId,
-    id: typeof option.id === "string" ? option.id : undefined,
     price: parseInteger(option.price),
     airline: typeof option.airline === "string" ? option.airline : undefined,
     departure_airport:
@@ -239,9 +241,18 @@ function normalizeFlightOption(raw: unknown): FlightOption | null {
         : undefined,
     arrival_time:
       typeof option.arrival_time === "string" ? option.arrival_time : undefined,
+    arrival_time_ahead:
+      typeof option.arrival_time_ahead === "string"
+        ? option.arrival_time_ahead
+        : undefined,
     duration: typeof option.duration === "string" ? option.duration : undefined,
     stops: parseInteger(option.stops),
     cabin: typeof option.cabin === "string" ? option.cabin : undefined,
+    is_best:
+      typeof option.is_best === "boolean" ? option.is_best : undefined,
+    delay: typeof option.delay === "string" ? option.delay : undefined,
+    price_level:
+      typeof option.price_level === "string" ? option.price_level : undefined,
   };
 }
 

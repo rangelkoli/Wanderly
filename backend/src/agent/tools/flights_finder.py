@@ -1,6 +1,7 @@
 """Flight search tool powered by fast-flights (Google Flights scraper)."""
 
 import json
+import os
 import re
 from typing import Any, List
 from fast_flights import FlightData, Passengers, get_flights
@@ -40,17 +41,21 @@ def _normalize_travel_class(value: str) -> str:
 
 
 class FlightOption(TypedDict, total=False):
-    option_id: int
     id: str
+    option_id: int
     price: int
     airline: str
     departure_airport: str
     arrival_airport: str
     departure_time: str
     arrival_time: str
+    arrival_time_ahead: str
     duration: str
     stops: int
     cabin: str
+    is_best: bool
+    delay: str
+    price_level: str
 
 
 def _parse_duration_minutes(value: Any) -> int:
@@ -74,6 +79,58 @@ def _flight_score(flight: FlightOption) -> float:
     stops = _parse_int(flight.get("stops"))
     duration_minutes = _parse_duration_minutes(flight.get("duration"))
     return price + (stops * 200) + (duration_minutes * 0.5)
+
+
+def _search_parameters_payload(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: str | None,
+) -> dict[str, str | None]:
+    return {
+        "origin": origin.strip().upper(),
+        "destination": destination.strip().upper(),
+        "departure_date": departure_date,
+        "return_date": return_date,
+    }
+
+
+def _flight_search_unavailable_payload(
+    origin: str,
+    destination: str,
+    departure_date: str,
+    return_date: str | None,
+    error_messages: list[str],
+) -> str:
+    return json.dumps(
+        {
+            "type": "no_flights_found",
+            "message": "Flight search is temporarily unavailable. Please try again later.",
+            "search_parameters": _search_parameters_payload(
+                origin, destination, departure_date, return_date
+            ),
+            "error": {
+                "code": "flight_search_unavailable",
+                "details": error_messages,
+            },
+        },
+        indent=2,
+    )
+
+
+def _resolve_fetch_modes() -> list[str]:
+    configured_mode = os.getenv("FAST_FLIGHTS_FETCH_MODE", "").strip().lower()
+    if configured_mode:
+        return [configured_mode]
+
+    modes = ["common", "local"]
+    if os.getenv("FAST_FLIGHTS_ALLOW_REMOTE_FALLBACK", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        modes.append("fallback")
+    return modes
 
 
 def flights_finder(
@@ -115,37 +172,70 @@ def flights_finder(
             )
         )
 
-    try:
-        result = get_flights(
-            flight_data=flight_data_list,
-            trip=trip_type,
-            seat=normalized_seat,  # type: ignore[arg-type]
-            passengers=Passengers(adults=normalized_adults),
-            fetch_mode="fallback",
+    fetch_errors: list[str] = []
+    result = None
+    for fetch_mode in _resolve_fetch_modes():
+        try:
+            result = get_flights(
+                flight_data=flight_data_list,
+                trip=trip_type,
+                seat=normalized_seat,  # type: ignore[arg-type]
+                passengers=Passengers(adults=normalized_adults),
+                fetch_mode=fetch_mode,  # type: ignore[arg-type]
+            )
+            print(
+                "Fetched "
+                f"{len(result.flights) if result.flights else 0} flights "
+                f"using mode={fetch_mode}. Current price: {result.current_price}"
+            )
+            print(f"Raw flight data: {result.flights}")
+            break
+        except Exception as e:
+            fetch_errors.append(f"{fetch_mode}: {str(e)}")
+
+    if result is None:
+        return _flight_search_unavailable_payload(
+            origin,
+            destination,
+            departure_date,
+            return_date,
+            fetch_errors,
         )
-        print(f"Fetched {len(result.flights) if result.flights else 0} flights. Current price: {result.current_price}")
-        print(f"Raw flight data: {result.flights}")
-    except Exception as e:
-        raise ValueError(f"Failed to fetch flights: {str(e)}")
 
     flights_data: List[FlightOption] = []
     
+    price_level = _parse_str(getattr(result, "current_price", None), "")
+
     if result.flights:
         for i, flight in enumerate(result.flights):
-            flight_dict = flight.__dict__ if hasattr(flight, '__dict__') else {}
-            
+            # fast-flights Flight dataclass fields:
+            #   is_best, name, departure, arrival, arrival_time_ahead,
+            #   duration, stops, delay, price
             flight_info: FlightOption = {
+                "id": _parse_str(getattr(flight, "id", None), ""),
                 "option_id": i + 1,
-                "id": _parse_str(flight_dict.get("id"), f"flight_{i}"),
-                "price": _parse_int(flight_dict.get("price"), _parse_int(result.current_price)),
-                "airline": _parse_str(flight_dict.get("airline"), "Unknown"),
-                "departure_airport": _parse_str(flight_dict.get("departure_airport"), origin.strip().upper()),
-                "arrival_airport": _parse_str(flight_dict.get("arrival_airport"), destination.strip().upper()),
-                "departure_time": _parse_str(flight_dict.get("departure_time")),
-                "arrival_time": _parse_str(flight_dict.get("arrival_time")),
-                "duration": _parse_str(flight_dict.get("duration")),
-                "stops": _parse_int(flight_dict.get("stops")),
-                "cabin": _parse_str(flight_dict.get("cabin"), normalized_travel_class),
+                "price": _parse_int(getattr(flight, "price", None)),
+                "airline": _parse_str(
+                    getattr(flight, "name", None) or getattr(flight, "airline", None),
+                    "Unknown",
+                ),
+                "departure_airport": origin.strip().upper(),
+                "arrival_airport": destination.strip().upper(),
+                "departure_time": _parse_str(
+                    getattr(flight, "departure", None)
+                    or getattr(flight, "departure_time", None)
+                ),
+                "arrival_time": _parse_str(
+                    getattr(flight, "arrival", None)
+                    or getattr(flight, "arrival_time", None)
+                ),
+                "arrival_time_ahead": _parse_str(getattr(flight, "arrival_time_ahead", None), ""),
+                "duration": _parse_str(getattr(flight, "duration", None)),
+                "stops": _parse_int(getattr(flight, "stops", None)),
+                "cabin": _parse_str(getattr(flight, "cabin", None), normalized_travel_class),
+                "is_best": bool(getattr(flight, "is_best", False)),
+                "delay": _parse_str(getattr(flight, "delay", None), ""),
+                "price_level": price_level,
             }
             flights_data.append(flight_info)
 
@@ -153,12 +243,9 @@ def flights_finder(
         return json.dumps({
             "type": "no_flights_found",
             "message": f"No flights found from {origin.strip().upper()} to {destination.strip().upper()} on {departure_date}",
-            "search_parameters": {
-                "origin": origin.strip().upper(),
-                "destination": destination.strip().upper(),
-                "departure_date": departure_date,
-                "return_date": return_date,
-            }
+            "search_parameters": _search_parameters_payload(
+                origin, destination, departure_date, return_date
+            ),
         }, indent=2)
 
     ranked_flights = sorted(flights_data, key=_flight_score)[:3]
@@ -184,14 +271,15 @@ def flights_finder(
                 "currency": currency,
             },
             "price_info": {
-                "current_price": _parse_int(result.current_price),
+                "current_price": _parse_str(result.current_price, ""),
             },
         }
     )
 
-    # Return the user's selection
+    # Return the user's selection (full flight details from frontend)
     if isinstance(answer, dict):
-        return json.dumps(answer)
+        # If the frontend sent a full flight object, wrap it for downstream use
+        return json.dumps({"selected_flight": answer})
     return json.dumps({"selected_flight": answer})
 
 

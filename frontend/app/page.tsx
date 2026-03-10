@@ -1,50 +1,63 @@
-import Link from "next/link";
-
-import { AuthStatus } from "@/components/auth-status";
+import { HeroChat } from "@/components/hero-chat";
 
 export default function Home() {
   return (
-    <main className="mx-auto grid min-h-screen w-full max-w-6xl gap-6 px-4 py-6 sm:px-8">
-      <section className="grid overflow-hidden rounded-[2rem] border border-border/70 bg-card/80 shadow-[0_24px_80px_rgba(80,55,24,0.15)] backdrop-blur md:grid-cols-[1.2fr_0.8fr]">
-        <div className="p-8 sm:p-12">
-          <p className="mb-3 text-xs font-bold uppercase tracking-[0.24em] text-accent-foreground/80">
-            Next.js + Supabase
-          </p>
-          <h1 className="max-w-3xl text-5xl font-semibold tracking-[-0.06em] text-balance sm:text-7xl">
-            Authentication screens are now part of the frontend.
-          </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
-            Wanderly now ships with dedicated login and signup pages backed by
-            Supabase Auth on the client.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-              href="/signup"
-            >
-              Create account
-            </Link>
-            <Link
-              className="inline-flex h-11 items-center justify-center rounded-md border border-input bg-background/75 px-6 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-              href="/login"
-            >
-              Log in
-            </Link>
+    <main className="relative flex min-h-screen w-full flex-col overflow-hidden">
+      {/* Ambient background */}
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <div className="absolute -left-40 -top-40 h-[480px] w-[480px] rounded-full bg-[#d66b2d]/6 blur-[100px]" />
+        <div className="absolute -right-32 top-[30%] h-[400px] w-[400px] rounded-full bg-[#1c7c7d]/5 blur-[100px]" />
+        <div className="absolute bottom-[-10%] left-[40%] h-[320px] w-[320px] rounded-full bg-[#d66b2d]/4 blur-[100px]" />
+      </div>
+
+      {/* Header */}
+      <header className="relative z-20 flex items-center justify-between px-6 py-5 md:px-10">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#d66b2d]">
+            <svg className="h-[18px] w-[18px] text-[#fff8ee]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </div>
+          <span className="text-lg font-semibold tracking-tight text-[#1f2937]">Wanderly</span>
+        </div>
+      </header>
+
+      {/* Hero: centered, vertically fills remaining space */}
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 pb-16 md:px-10">
+        <div className="w-full max-w-2xl text-center">
+          <p className="mb-4 text-sm font-medium tracking-wide text-[#5f6b7a]">
+            Your AI travel companion
+          </p>
+          <h1 className="text-[clamp(2rem,5vw,3.25rem)] font-semibold leading-[1.15] tracking-tight text-[#1f2937]">
+            Where do you want to go?
+          </h1>
+          <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-[#5f6b7a]">
+            Describe your dream trip and let Wanderly plan every detail — flights, itinerary, and local picks.
+          </p>
         </div>
 
-        <div
-          aria-hidden="true"
-          className="grid min-h-[280px] grid-cols-2 gap-3 bg-[linear-gradient(135deg,rgba(255,248,238,0.45),rgba(255,255,255,0.08)),linear-gradient(180deg,rgba(28,124,125,0.08),rgba(214,107,45,0.12))] p-5"
-        >
-          <div />
-          <div />
-          <div />
-          <div />
+        {/* Chat input box */}
+        <div className="mt-10 w-full max-w-2xl">
+          <HeroChat />
         </div>
-      </section>
 
-      <AuthStatus />
+        {/* Suggestion chips */}
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          {[
+            "Weekend in Tokyo",
+            "10 days across Italy",
+            "Budget trip to Bali",
+            "Family vacation in Costa Rica",
+          ].map((suggestion) => (
+            <span
+              className="rounded-full border border-[#1f2937]/8 bg-white/60 px-3.5 py-1.5 text-xs font-medium text-[#5f6b7a] backdrop-blur-sm transition-colors hover:border-[#d66b2d]/30 hover:text-[#d66b2d]"
+              key={suggestion}
+            >
+              {suggestion}
+            </span>
+          ))}
+        </div>
+      </div>
     </main>
   );
 }

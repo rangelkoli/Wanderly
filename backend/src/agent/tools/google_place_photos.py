@@ -3,11 +3,12 @@
 import json
 import os
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
-GOOGLE_FIND_PLACE_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
-GOOGLE_PLACE_PHOTO_URL = "https://maps.googleapis.com/maps/api/place/photo"
+GOOGLE_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+GOOGLE_PLACE_PHOTO_URL = "https://places.googleapis.com/v1"
 
 
 def _get_api_key() -> str:
@@ -17,22 +18,65 @@ def _get_api_key() -> str:
     return api_key
 
 
-def _get_json(url: str, params: dict[str, Any]) -> dict[str, Any]:
-    query = urlencode(params)
-    with urlopen(f"{url}?{query}", timeout=20) as response:
-        payload = response.read().decode("utf-8")
-    return json.loads(payload)
+def _request_json(
+    url: str,
+    *,
+    method: str = "GET",
+    params: dict[str, Any] | None = None,
+    payload: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    request_url = url
+    if params:
+        request_url = f"{url}?{urlencode(params)}"
 
-
-def _build_photo_url(photo_reference: str, api_key: str, max_width: int) -> str:
-    query = urlencode(
-        {
-            "maxwidth": max(200, min(max_width, 1600)),
-            "photoreference": photo_reference,
-            "key": api_key,
+    request_headers = headers or {}
+    request_data = None
+    if payload is not None:
+        request_data = json.dumps(payload).encode("utf-8")
+        request_headers = {
+            "Content-Type": "application/json",
+            **request_headers,
         }
+
+    request = Request(
+        request_url,
+        data=request_data,
+        headers=request_headers,
+        method=method,
     )
-    return f"{GOOGLE_PLACE_PHOTO_URL}?{query}"
+
+    try:
+        with urlopen(request, timeout=20) as response:
+            body = response.read().decode("utf-8")
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            error_payload = json.loads(body)
+        except json.JSONDecodeError as decode_error:
+            raise ValueError(f"Google Places request failed: HTTP {exc.code}") from decode_error
+
+        error = error_payload.get("error", {})
+        message = error.get("message") or body or f"HTTP {exc.code}"
+        raise ValueError(f"Google Places request failed: {message}") from exc
+
+    return json.loads(body)
+
+
+def _photo_width(max_width: int) -> int:
+    return max(1, min(max_width, 4800))
+
+
+def _fetch_photo_uri(photo_name: str, api_key: str, max_width: int) -> str | None:
+    payload = _request_json(
+        f"{GOOGLE_PLACE_PHOTO_URL}/{photo_name}/media",
+        params={
+            "maxWidthPx": _photo_width(max_width),
+            "skipHttpRedirect": "true",
+            "key": api_key,
+        },
+    )
+    return payload.get("photoUri")
 
 
 def _normalize_locations(locations: list[str] | str) -> list[str]:
@@ -56,45 +100,58 @@ def google_place_photos(
     results: list[dict[str, Any]] = []
 
     for location in normalized_locations:
-        params: dict[str, Any] = {
-            "input": location,
-            "inputtype": "textquery",
-            "fields": "name,place_id,formatted_address,photos",
-            "language": language,
-            "key": api_key,
+        payload: dict[str, Any] = {
+            "textQuery": location,
+            "languageCode": language,
         }
         if region:
-            params["region"] = region
+            payload["regionCode"] = region.upper()
 
         try:
-            payload = _get_json(GOOGLE_FIND_PLACE_URL, params)
-            status = payload.get("status", "UNKNOWN_ERROR")
-            candidates = payload.get("candidates", [])
+            search_payload = _request_json(
+                GOOGLE_TEXT_SEARCH_URL,
+                method="POST",
+                payload=payload,
+                headers={
+                    "X-Goog-Api-Key": api_key,
+                    "X-Goog-FieldMask": (
+                        "places.id,"
+                        "places.name,"
+                        "places.displayName,"
+                        "places.formattedAddress,"
+                        "places.photos"
+                    ),
+                },
+            )
+            candidates = search_payload.get("places", [])
 
-            if status != "OK" or not candidates:
+            if not candidates:
                 results.append(
                     {
                         "query": location,
-                        "status": status,
+                        "status": "NOT_FOUND",
                         "image_url": None,
-                        "error": payload.get("error_message") or "No place match found.",
+                        "error": "No place match found.",
                     }
                 )
                 continue
 
             candidate = candidates[0]
             photos = candidate.get("photos", [])
-            photo_reference = photos[0].get("photo_reference") if photos else None
-            image_url = _build_photo_url(photo_reference, api_key, max_width) if photo_reference else None
+            photo = photos[0] if photos else {}
+            photo_name = photo.get("name")
+            image_url = _fetch_photo_uri(photo_name, api_key, max_width) if photo_name else None
 
             results.append(
                 {
                     "query": location,
                     "status": "OK",
-                    "name": candidate.get("name"),
-                    "place_id": candidate.get("place_id"),
-                    "formatted_address": candidate.get("formatted_address"),
+                    "name": candidate.get("displayName", {}).get("text"),
+                    "place_id": candidate.get("id"),
+                    "formatted_address": candidate.get("formattedAddress"),
                     "image_url": image_url,
+                    "photo_name": photo_name,
+                    "photo_attributions": photo.get("authorAttributions", []),
                 }
             )
         except Exception as exc:

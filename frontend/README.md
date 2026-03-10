@@ -9,6 +9,8 @@ NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-supabase-publishable-key
 LANGGRAPH_API_URL=http://127.0.0.1:2024
 LANGGRAPH_ASSISTANT_ID=agent
+GOOGLE_MAPS_API_KEY=your-google-maps-api-key
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 ```
 
 First, run the development server:

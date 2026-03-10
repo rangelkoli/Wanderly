@@ -105,3 +105,164 @@ a {
     min-height: 220px;
   }
 }
+
+/* ─── Motion tokens ─── */
+:root {
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-smooth: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* ─── Keyframes ─── */
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes thinking-bar {
+  0% { transform: scaleX(0); transform-origin: left; }
+  50% { transform: scaleX(1); transform-origin: left; }
+  50.1% { transform: scaleX(1); transform-origin: right; }
+  100% { transform: scaleX(0); transform-origin: right; }
+}
+
+@keyframes border-gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* ─── Animation utilities ─── */
+
+.anim-fade-in-up {
+  animation: fade-in-up 500ms var(--ease-out-quart) both;
+}
+
+.anim-fade-in {
+  animation: fade-in 400ms var(--ease-out-quart) both;
+}
+
+.anim-scale-in {
+  animation: scale-in 400ms var(--ease-out-expo) both;
+}
+
+.anim-slide-left {
+  animation: slide-in-left 500ms var(--ease-out-quart) both;
+}
+
+/* Stagger support: set --i via style attribute */
+.anim-stagger {
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+/* Thinking / skeleton shimmer */
+.anim-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(31, 41, 55, 0.04) 0%,
+    rgba(31, 41, 55, 0.08) 40%,
+    rgba(31, 41, 55, 0.04) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
+}
+
+.anim-thinking-dots > span {
+  display: inline-block;
+  animation: pulse-dot 1.4s var(--ease-in-out-smooth) infinite;
+}
+.anim-thinking-dots > span:nth-child(2) { animation-delay: 200ms; }
+.anim-thinking-dots > span:nth-child(3) { animation-delay: 400ms; }
+
+.anim-thinking-bar {
+  animation: thinking-bar 2s var(--ease-in-out-smooth) infinite;
+}
+
+.animate-border-gradient {
+  background-size: 200% 200%;
+  animation: border-gradient 3s ease infinite;
+}
+
+.animate-shake {
+  animation: shake 400ms var(--ease-out-quart) both;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade-in-up,
+  .anim-fade-in,
+  .anim-scale-in,
+  .anim-slide-left {
+    animation: fade-in 200ms ease-out both;
+  }
+  .anim-shimmer {
+    animation: none;
+  }
+  .anim-thinking-dots > span {
+    animation: none;
+    opacity: 0.6;
+  }
+  .anim-thinking-bar {
+    animation: none;
+    transform: scaleX(1);
+    opacity: 0.3;
+  }
+}

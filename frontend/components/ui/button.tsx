@@ -1,11 +1,12 @@
 import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
 
 import { cn } from "@/lib/utils";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   asChild?: boolean;
   variant?: "default" | "secondary" | "outline" | "ghost";
-  size?: "default" | "sm" | "lg";
+  size?: "default" | "sm" | "lg" | "icon";
 };
 
 const variantClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
@@ -23,6 +24,7 @@ const sizeClasses: Record<NonNullable<ButtonProps["size"]>, string> = {
   default: "h-10 px-4 py-2",
   sm: "h-9 rounded-md px-3",
   lg: "h-11 rounded-md px-6",
+  icon: "size-10",
 };
 
 export function Button({
@@ -34,6 +36,7 @@ export function Button({
   type = "button",
   ...props
 }: ButtonProps) {
+  const Comp = asChild ? Slot : "button";
   const classes = cn(
     "inline-flex shrink-0 items-center justify-center gap-2 rounded-lg text-sm font-medium transition-colors outline-none focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50",
     variantClasses[variant],
@@ -41,23 +44,13 @@ export function Button({
     className,
   );
 
-  if (asChild && React.isValidElement(children)) {
-    const child = children as React.ReactElement<{
-      className?: string;
-    }>;
-
-    return React.cloneElement(child, {
-      className: cn(classes, child.props.className),
-    });
-  }
-
   return (
-    <button
+    <Comp
       className={classes}
       type={type}
       {...props}
     >
       {children}
-    </button>
+    </Comp>
   );
 }
