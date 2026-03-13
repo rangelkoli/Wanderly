@@ -9,6 +9,7 @@ from agent.models import agent_model
 from agent.tools import (
     ask_human,
     flights_finder,
+    travel_budget_agent,
     google_maps_coordinates,
     google_place_photos,
     internet_search,
@@ -67,6 +68,7 @@ graph = create_agent(
         ask_human,
         google_maps_coordinates,
         flights_finder,
+        travel_budget_agent,
     ],
     system_prompt=SYSTEM_PROMPT,
     model=agent_model,

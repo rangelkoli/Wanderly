@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Literal
+from typing import Any, Literal
 
 from langchain_community.tools import DuckDuckGoSearchResults
 from tavily import TavilyClient
@@ -15,6 +15,7 @@ def _get_tavily_client() -> TavilyClient | None:
 def _get_duckduckgo_search() -> DuckDuckGoSearchResults:
     return DuckDuckGoSearchResults()
 
+
 def internet_search(
     query: str,
     max_results: int = 5,
@@ -22,19 +23,29 @@ def internet_search(
     include_raw_content: bool = False,
 ):
     """Run a web search and return structured JSON with image candidates."""
+    if not query or not query.strip():
+        raise ValueError("query is required.")
+    if topic not in {"general", "news", "finance"}:
+        raise ValueError("topic must be one of: general, news, finance.")
 
     normalized_max = max(1, min(max_results, 10))
+    attempts: list[str] = []
+    normalized_include_raw_content = bool(include_raw_content)
+    tavily_payload: dict[str, Any] = {
+        "query": query,
+        "topic": topic,
+        "max_results": normalized_max,
+        "include_images": True,
+        "include_raw_content": normalized_include_raw_content,
+    }
 
     tavily_client = _get_tavily_client()
     if tavily_client is not None:
         try:
             tavily_response = tavily_client.search(
-                query=query,
-                topic=topic,
-                max_results=normalized_max,
-                include_images=True,
-                include_raw_content=include_raw_content,
+                **tavily_payload,
             )
+            attempts.append("tavily")
 
             results = []
             for row in tavily_response.get("results", [])[:normalized_max]:
@@ -55,20 +66,22 @@ def internet_search(
                 "image_candidates": tavily_response.get("images", [])[:20],
             }
             return json.dumps(payload)
-        except Exception:
-            pass
+        except Exception as exc:
+            attempts.append(f"tavily_failed:{type(exc).__name__}")
 
     fallback_text = _get_duckduckgo_search().run(
         query,
         max_results=normalized_max,
         topic=topic,
-        include_raw_content=include_raw_content,
+        include_raw_content=normalized_include_raw_content,
     )
+    attempts.append("duckduckgo")
 
     fallback_payload = {
         "query": query,
         "provider": "duckduckgo",
         "results_text": fallback_text,
+        "attempts": attempts,
         "image_candidates": [],
     }
     return json.dumps(fallback_payload)

@@ -15,8 +15,47 @@ from .openrouter import openrouterModel
 from .inception import inceptionModel
 
 
+_MODEL_ALIASES = {
+    "auto": ["inception", "openrouter", "ollama", "chatgpt"],
+    "gpt": "chatgpt",
+    "openai": "chatgpt",
+    "inceptionlabs": "inception",
+    "ollama_local": "ollama",
+    "google": "openrouter",
+}
+
+
+def _normalize_requested_model(requested: str) -> str:
+    requested_value = (requested or "auto").strip().lower()
+    if not requested_value:
+        return "auto"
+    alias_target = _MODEL_ALIASES.get(requested_value)
+    if alias_target is None:
+        return requested_value
+    if isinstance(alias_target, list):
+        # Keep for compatibility; not used directly as base requested provider.
+        return requested_value
+    return alias_target
+
+
+def _model_candidates_for_request(requested: str) -> list[str]:
+    if requested in {"auto", ""}:
+        return ["inception", "openrouter", "ollama", "chatgpt"]
+    if requested == "inception":
+        return ["inception", "openrouter", "ollama", "chatgpt"]
+    if requested == "openrouter":
+        return ["openrouter", "inception", "ollama", "chatgpt"]
+    if requested == "ollama":
+        return ["ollama", "chatgpt", "openrouter", "inception"]
+    if requested == "chatgpt":
+        return ["chatgpt", "openrouter", "ollama", "inception"]
+    return ["chatgpt", "openrouter", "ollama", "inception", requested]
+
+
 def _resolve_model_name() -> str:
-    return (getenv("TRAVEL_AGENT_MODEL", "auto") or "auto").strip().lower()
+    return _normalize_requested_model(
+        (getenv("TRAVEL_AGENT_MODEL", "auto") or "auto").strip().lower()
+    )
 
 
 def get_active_model() -> Any:
@@ -28,18 +67,7 @@ def get_active_model() -> Any:
     """
 
     requested = _resolve_model_name()
-
-    model_candidates = [requested] if requested != "auto" else ["inception", "openrouter", "ollama", "chatgpt"]
-    if requested == "auto":
-        fallback_candidates = model_candidates
-    elif requested == "inception":
-        fallback_candidates = ["inception", "openrouter", "ollama", "chatgpt"]
-    elif requested == "openrouter":
-        fallback_candidates = ["openrouter", "inception", "ollama", "chatgpt"]
-    elif requested == "ollama":
-        fallback_candidates = ["ollama", "chatgpt", "openrouter", "inception"]
-    else:
-        fallback_candidates = [requested, "chatgpt", "openrouter", "inception", "ollama"]
+    fallback_candidates = _model_candidates_for_request(requested)
 
     for candidate in fallback_candidates:
         if candidate == "inception" and inceptionModel is not None:

@@ -67,6 +67,12 @@ def _photo_width(max_width: int) -> int:
     return max(1, min(max_width, 4800))
 
 
+def _normalize_locations(locations: list[str] | str) -> list[str]:
+    if isinstance(locations, str):
+        locations = [locations]
+    return [location.strip() for location in locations if isinstance(location, str) and location.strip()]
+
+
 def _fetch_photo_uri(photo_name: str, api_key: str, max_width: int) -> str | None:
     payload = _request_json(
         f"{GOOGLE_PLACE_PHOTO_URL}/{photo_name}/media",
@@ -77,12 +83,6 @@ def _fetch_photo_uri(photo_name: str, api_key: str, max_width: int) -> str | Non
         },
     )
     return payload.get("photoUri")
-
-
-def _normalize_locations(locations: list[str] | str) -> list[str]:
-    if isinstance(locations, str):
-        locations = [locations]
-    return [location.strip() for location in locations if isinstance(location, str) and location.strip()]
 
 
 def google_place_photos(

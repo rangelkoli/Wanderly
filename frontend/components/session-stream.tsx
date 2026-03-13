@@ -44,10 +44,38 @@ import {
   updateStateFromPayload,
 } from "@/components/session-stream/helpers";
 import type { StreamEventRecord } from "@/components/session-stream/types";
+import {
+  getPreferredAudioMimeType,
+  getSpeechRecognitionConstructor,
+  transcribeVoiceAudio,
+} from "@/lib/voice";
 
 type SessionStreamProps = {
   sessionId: string;
 };
+
+const VOICE_MAX_DURATION_SECONDS = 20;
+const QUICK_FOLLOW_UP_PROMPTS = [
+  "Make it budget-friendly and add more local food spots",
+  "I prefer quieter neighborhoods and nature",
+  "Add one family-friendly attraction this weekend",
+] as const;
+
+function formatSeconds(seconds: number) {
+  return `00:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatSessionVoiceStatus(
+  isRecordingVoice: boolean,
+  isTranscribingVoice: boolean,
+  seconds: number,
+) {
+  if (isTranscribingVoice) return "Turning your voice into a precise request";
+  if (isRecordingVoice) {
+    return `Capturing sound · ${formatSeconds(seconds)} · continue`;
+  }
+  return "Use voice first or write your next plan tweak";
+}
 
 /* ─── Main Component ─── */
 
@@ -73,6 +101,15 @@ export function SessionStream({ sessionId }: SessionStreamProps) {
   const streamAbortRef = useRef<AbortController | null>(null);
   const autoStartedRef = useRef(false);
   const [activeTab, setActiveTab] = useState<"plan" | "tools">("plan");
+  const voiceRecognitionRef = useRef<unknown>(null);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [isTranscribingVoice, setIsTranscribingVoice] = useState(false);
+  const [listeningSeconds, setListeningSeconds] = useState(0);
+  const voiceMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceMediaStreamRef = useRef<MediaStream | null>(null);
+  const voiceMediaChunksRef = useRef<Blob[]>([]);
+  const voiceSpeechAbortRef = useRef<AbortController | null>(null);
+  const voiceRecordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadState = useCallback(async () => {
     setStatus("loading");
@@ -245,8 +282,242 @@ export function SessionStream({ sessionId }: SessionStreamProps) {
   useEffect(() => {
     return () => {
       streamAbortRef.current?.abort();
+      stopVoiceCapture();
     };
   }, []);
+
+  function clearVoiceRecordingTimer() {
+    if (voiceRecordingTimerRef.current) {
+      clearInterval(voiceRecordingTimerRef.current);
+      voiceRecordingTimerRef.current = null;
+    }
+  }
+
+  function startVoiceRecordingTimer() {
+    clearVoiceRecordingTimer();
+    setListeningSeconds(0);
+    voiceRecordingTimerRef.current = setInterval(() => {
+      setListeningSeconds((current) => {
+        const next = current + 1;
+        if (next >= VOICE_MAX_DURATION_SECONDS) {
+          stopVoiceCapture();
+          return current;
+        }
+        return next;
+      });
+    }, 1000);
+  }
+
+  function stopVoiceCapture() {
+    const activeRecognizer = voiceRecognitionRef.current as
+      | { stop: () => void }
+      | null
+      | undefined;
+    activeRecognizer?.stop();
+    if (voiceMediaRecorderRef.current) {
+      if (voiceMediaRecorderRef.current.state === "recording") {
+        voiceMediaRecorderRef.current.stop();
+      }
+      voiceMediaRecorderRef.current = null;
+    }
+    if (voiceMediaStreamRef.current) {
+      voiceMediaStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+      voiceMediaStreamRef.current = null;
+    }
+    voiceRecognitionRef.current = null;
+    voiceMediaChunksRef.current = [];
+    setIsTranscribingVoice(false);
+    setIsRecordingVoice(false);
+    setListeningSeconds(0);
+    clearVoiceRecordingTimer();
+    voiceSpeechAbortRef.current?.abort();
+    voiceSpeechAbortRef.current = null;
+  }
+
+  function clearVoiceMediaState() {
+    if (voiceMediaStreamRef.current) {
+      voiceMediaStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+      voiceMediaStreamRef.current = null;
+    }
+    if (voiceMediaRecorderRef.current) {
+      voiceMediaRecorderRef.current = null;
+    }
+    voiceMediaChunksRef.current = [];
+  }
+
+  async function startFallbackVoiceCaptureForPrompt() {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setError("Microphone recording is unavailable in this browser.");
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      setError(
+        "Voice recording requires a browser that supports audio recording.",
+      );
+      return;
+    }
+    if (status === "streaming") return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = getPreferredAudioMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      voiceMediaStreamRef.current = stream;
+      voiceMediaChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          voiceMediaChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstart = () => {
+        setIsRecordingVoice(true);
+        startVoiceRecordingTimer();
+      };
+      recorder.onstop = async () => {
+        const recordingBlob = new Blob(voiceMediaChunksRef.current, {
+          type: mimeType || "audio/webm",
+        });
+        clearVoiceMediaState();
+        clearVoiceRecordingTimer();
+        stopVoiceCapture();
+
+        if (!recordingBlob.size) {
+          setError("No voice was captured.");
+          return;
+        }
+
+        const abortController = new AbortController();
+        voiceSpeechAbortRef.current = abortController;
+        setIsTranscribingVoice(true);
+        setError(null);
+        try {
+          const transcript = await transcribeVoiceAudio(
+            recordingBlob,
+            abortController.signal,
+          );
+          if (transcript) {
+            setPrompt((current) => {
+              const next = current.trim();
+              if (!next) return transcript;
+              return `${next} ${transcript}`;
+            });
+          } else {
+            setError("Could not detect a clear message.");
+          }
+        } catch (transcriptError) {
+          if (!abortController.signal.aborted) {
+            setError(
+              transcriptError instanceof Error
+                ? transcriptError.message
+                : "Unable to transcribe your voice.",
+            );
+          }
+        } finally {
+          setIsTranscribingVoice(false);
+          setIsRecordingVoice(false);
+          voiceSpeechAbortRef.current = null;
+          clearVoiceMediaState();
+        }
+      };
+      recorder.onerror = () => {
+        setError("Voice recording failed.");
+        stopVoiceCapture();
+      };
+
+      voiceMediaRecorderRef.current = recorder;
+      recorder.start();
+    } catch (captureError) {
+      setError(
+        captureError instanceof Error
+          ? captureError.message
+          : "Could not start voice capture.",
+      );
+      stopVoiceCapture();
+    }
+  }
+
+  function startVoiceCaptureForPrompt() {
+    if (status === "streaming" || canResumeAskHuman || canResumeFlightSelection)
+      return;
+
+    if (isRecordingVoice || isTranscribingVoice) {
+      stopVoiceCapture();
+      return;
+    }
+
+    const RecognitionCtor = getSpeechRecognitionConstructor();
+    if (!RecognitionCtor) {
+      void startFallbackVoiceCaptureForPrompt();
+      return;
+    }
+
+    const recognition = new RecognitionCtor();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: unknown) => {
+      const speechEvent = event as {
+        resultIndex: number;
+        results: Array<
+          [
+            {
+              transcript: string;
+            },
+          ]
+        >;
+      };
+      const index =
+        speechEvent.resultIndex ??
+        (speechEvent.results?.length ? speechEvent.results.length - 1 : 0);
+      const transcript = speechEvent.results?.[index]?.[0]?.transcript?.trim();
+      if (transcript) {
+        setPrompt((current) => {
+          const next = current.trim();
+          if (!next) return transcript;
+          return `${next} ${transcript}`;
+        });
+      }
+      stopVoiceCapture();
+    };
+
+    recognition.onerror = () => {
+      setError("Voice input failed. Please try again.");
+      void startFallbackVoiceCaptureForPrompt();
+      stopVoiceCapture();
+    };
+    recognition.onstart = () => {
+      setError(null);
+      setIsRecordingVoice(true);
+      startVoiceRecordingTimer();
+    };
+    recognition.onend = () => {
+      setIsRecordingVoice(false);
+      voiceRecognitionRef.current = null;
+      clearVoiceRecordingTimer();
+      setListeningSeconds(0);
+    };
+
+    voiceRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch (startError) {
+      stopVoiceCapture();
+      setError(
+        startError instanceof Error
+          ? startError.message
+          : "Unable to start voice input.",
+      );
+    }
+  }
 
   const canResumeAskHuman =
     pendingInterrupt?.kind === "ask_human" &&
@@ -254,6 +525,7 @@ export function SessionStream({ sessionId }: SessionStreamProps) {
   const canResumeFlightSelection =
     pendingInterrupt?.kind === "select_flight" &&
     pendingInterrupt.flightOptions.length > 0;
+  const isVoiceBusy = isRecordingVoice || isTranscribingVoice;
 
   async function handleResumeAskHuman() {
     if (!pendingInterrupt || !canResumeAskHuman) return;
@@ -437,10 +709,71 @@ export function SessionStream({ sessionId }: SessionStreamProps) {
 
             {/* Follow-up input */}
             <div className='overflow-hidden rounded-2xl border border-[#1f2937]/6 bg-white/80 shadow-sm backdrop-blur-sm'>
+              <div className='border-b border-[#1f2937]/8 bg-[#f6efe4]/60 px-4 py-2.5'>
+                <div className='flex items-center justify-between gap-3 text-xs'>
+                  <span className='inline-flex items-center gap-2 text-sm font-semibold text-[#1f2937]'>
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        isRecordingVoice
+                          ? "bg-[#d66b2d] animate-pulse"
+                          : isTranscribingVoice
+                            ? "bg-[#1c7c7d] animate-pulse"
+                            : "bg-[#1c7c7d]/35"
+                      }`}
+                    />
+                    Live travel board
+                  </span>
+                  <span className='text-[11px] text-[#5f6b7a]'>
+                    {formatSessionVoiceStatus(
+                      isRecordingVoice,
+                      isTranscribingVoice,
+                      listeningSeconds,
+                    )}
+                  </span>
+                </div>
+                <div className='mt-2 h-1 w-full overflow-hidden rounded-full bg-[#1f2937]/10'>
+                  <div
+                    className={`h-full rounded-full bg-gradient-to-r from-[#1c7c7d] via-[#ff9d64] to-[#d66b2d] transition-[width] duration-300 ${
+                      isRecordingVoice ? "opacity-100" : "opacity-40"
+                    }`}
+                    style={{
+                      width: `${
+                        Math.min(
+                          (listeningSeconds / VOICE_MAX_DURATION_SECONDS) * 100,
+                          100,
+                        )
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
               <div className='p-4'>
+                <div className='mb-2 flex flex-wrap gap-2'>
+                  {QUICK_FOLLOW_UP_PROMPTS.map((quickPrompt) => (
+                    <button
+                      className='rounded-full border border-[#1f2937]/10 bg-[#f6efe4]/80 px-3 py-1.5 text-xs text-[#5f6b7a] transition hover:border-[#d66b2d]/40 hover:bg-white hover:text-[#1c7c7d]'
+                      key={quickPrompt}
+                      onClick={() =>
+                        setPrompt((current) => {
+                          const next = current.trim();
+                          if (!next) return quickPrompt;
+                          return `${next} ${quickPrompt}`;
+                        })
+                      }
+                      type='button'
+                    >
+                      {quickPrompt}
+                    </button>
+                  ))}
+                </div>
                 <textarea
                   className='w-full resize-none bg-transparent text-sm leading-relaxed text-[#1f2937] outline-none placeholder:text-[#5f6b7a]/40'
-                  disabled={canResumeAskHuman || canResumeFlightSelection}
+                  disabled={
+                    canResumeAskHuman ||
+                    canResumeFlightSelection ||
+                    status === "streaming" ||
+                    isVoiceBusy
+                  }
                   onChange={(e) => setPrompt(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
@@ -464,34 +797,71 @@ export function SessionStream({ sessionId }: SessionStreamProps) {
                   {error ? (
                     <span className='text-red-600'>{error}</span>
                   ) : (
-                    "Shift+Enter for new line"
+                    isTranscribingVoice
+                      ? "Transcribing your voice..."
+                      : isRecordingVoice
+                        ? `Listening live: ${formatSeconds(listeningSeconds)}`
+                        : "Tip: Shift+Enter for new line"
                   )}
                 </span>
-                <button
-                  className='inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#d66b2d] px-3.5 text-xs font-semibold text-[#fff8ee] transition-all hover:bg-[#c05a24] disabled:opacity-40'
-                  disabled={
-                    status === "streaming" ||
-                    canResumeAskHuman ||
-                    canResumeFlightSelection
-                  }
-                  onClick={() => void startStream(prompt)}
-                  type='button'
-                >
-                  {status === "streaming" ? "Sending..." : "Send"}
-                  <svg
-                    className='h-3.5 w-3.5'
-                    fill='none'
-                    viewBox='0 0 24 24'
-                    stroke='currentColor'
-                    strokeWidth={2.5}
+                <div className='flex items-center gap-2'>
+                  <button
+                    className='inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#1c7c7d] px-3.5 text-xs font-semibold text-[#fff8ee] transition-all hover:bg-[#166567] disabled:opacity-40'
+                    disabled={
+                      status === "streaming" ||
+                      canResumeAskHuman ||
+                      canResumeFlightSelection ||
+                      isVoiceBusy
+                    }
+                    onClick={() => startVoiceCaptureForPrompt()}
+                    type='button'
                   >
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      d='M13 7l5 5m0 0l-5 5m5-5H6'
-                    />
-                  </svg>
-                </button>
+                    {isTranscribingVoice
+                      ? "Transcribing..."
+                      : isRecordingVoice
+                        ? (
+                          <>
+                            <span
+                              className='inline-flex items-center gap-0.5 mr-1'
+                              aria-hidden="true"
+                            >
+                              <span className="h-1.5 w-1 rounded-full bg-[#fff8ee] animate-pulse" />
+                              <span className="h-1.5 w-1 rounded-full bg-[#fff8ee] animate-pulse delay-75" />
+                              <span className="h-1.5 w-1 rounded-full bg-[#fff8ee] animate-pulse delay-150" />
+                            </span>
+                            Stop
+                          </>
+                        )
+                        : "🎤"}
+                    <span className='font-medium'>Voice</span>
+                  </button>
+                  <button
+                    className='inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#d66b2d] px-3.5 text-xs font-semibold text-[#fff8ee] transition-all hover:bg-[#c05a24] disabled:opacity-40'
+                    disabled={
+                      status === "streaming" ||
+                      canResumeAskHuman ||
+                      canResumeFlightSelection ||
+                      isVoiceBusy
+                    }
+                    onClick={() => void startStream(prompt)}
+                    type='button'
+                  >
+                    {status === "streaming" ? "Sending..." : "Send"}
+                    <svg
+                      className='h-3.5 w-3.5'
+                      fill='none'
+                      viewBox='0 0 24 24'
+                      stroke='currentColor'
+                      strokeWidth={2.5}
+                    >
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        d='M13 7l5 5m0 0l-5 5m5-5H6'
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
 

@@ -9,6 +9,20 @@ from langgraph.types import interrupt
 from typing_extensions import TypedDict
 
 
+def _normalize_iata_code(value: str, label: str) -> str:
+    normalized = (value or "").strip().upper()
+    if len(normalized) != 3 or not normalized.isalpha():
+        raise ValueError(f"{label} must be a 3-letter IATA code like 'JFK'.")
+    return normalized
+
+
+def _normalize_route_date(value: str, label: str) -> str:
+    text = (value or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        raise ValueError(f"{label} must use YYYY-MM-DD format.")
+    return text
+
+
 def _parse_int(value: Any, default: int = 0) -> int:
     """Safely parse a value to int, handling strings like '$288', 'typical', etc."""
     if value is None:
@@ -23,6 +37,19 @@ def _parse_int(value: Any, default: int = 0) -> int:
         if digits:
             return int(digits[0])
         return default
+    return default
+
+
+def _parse_float(value: Any, default: float | None) -> float | None:
+    """Safely parse a value to float."""
+    if value is None:
+        return default
+    if isinstance(value, (float, int)):
+        return float(value)
+    if isinstance(value, str):
+        digits = re.findall(r"\d+(?:\.\d+)?", value.replace(",", ""))
+        if digits:
+            return float(digits[0])
     return default
 
 
@@ -149,26 +176,48 @@ def flights_finder(
     if not origin.strip() or not destination.strip():
         raise ValueError("origin and destination are required.")
 
-    normalized_adults = max(1, min(adults, 9))
+    normalized_origin = _normalize_iata_code(origin, "origin")
+    normalized_destination = _normalize_iata_code(destination, "destination")
+    normalized_departure_date = _normalize_route_date(departure_date, "departure_date")
+    normalized_return_date = (
+        _normalize_route_date(return_date, "return_date") if return_date else None
+    )
+    if normalized_origin == normalized_destination:
+        raise ValueError("origin and destination must be different airports.")
+
+    normalized_adults = int(max(1, min(adults, 9)))
+    if adults != normalized_adults:
+        raise ValueError("adults must be between 1 and 9.")
+
+    max_budget = _parse_float(max_price, None) if max_price is not None else None
+    if max_budget is not None and max_budget <= 0:
+        raise ValueError("max_price must be a positive number.")
+
     normalized_travel_class = _normalize_travel_class(travel_class)
     normalized_seat = normalized_travel_class.replace("_", "-")
+    normalized_currency = (currency or "USD").strip().upper() or "USD"
 
     trip_type = "round-trip" if return_date else "one-way"
-    
+
     flight_data_list = [
         FlightData(
-            date=departure_date,
-            from_airport=origin.strip().upper(),
-            to_airport=destination.strip().upper(),
+            date=normalized_departure_date,
+            from_airport=normalized_origin,
+            to_airport=normalized_destination,
         )
     ]
-    print(f"Fetching flights for {origin.strip().upper()} to {destination.strip().upper()} on {departure_date} with {normalized_adults} adult(s) in {normalized_travel_class} class.")
+
+    print(
+        f"Fetching flights for {normalized_origin} to {normalized_destination} on"
+        f" {normalized_departure_date} with {normalized_adults} adult(s) in"
+        f" {normalized_travel_class} class."
+    )
     if return_date:
         flight_data_list.append(
             FlightData(
-                date=return_date,
-                from_airport=destination.strip().upper(),
-                to_airport=origin.strip().upper(),
+                date=normalized_return_date,
+                from_airport=normalized_destination,
+                to_airport=normalized_origin,
             )
         )
 
@@ -197,8 +246,8 @@ def flights_finder(
         return _flight_search_unavailable_payload(
             origin,
             destination,
-            departure_date,
-            return_date,
+            normalized_departure_date,
+            normalized_return_date,
             fetch_errors,
         )
 
@@ -207,20 +256,20 @@ def flights_finder(
     price_level = _parse_str(getattr(result, "current_price", None), "")
 
     if result.flights:
-        for i, flight in enumerate(result.flights):
+        for flight in result.flights:
             # fast-flights Flight dataclass fields:
             #   is_best, name, departure, arrival, arrival_time_ahead,
             #   duration, stops, delay, price
             flight_info: FlightOption = {
                 "id": _parse_str(getattr(flight, "id", None), ""),
-                "option_id": i + 1,
-                "price": _parse_int(getattr(flight, "price", None)),
+                "option_id": 0,
+                "price": _parse_int(getattr(flight, "price", None), 0),
                 "airline": _parse_str(
                     getattr(flight, "name", None) or getattr(flight, "airline", None),
                     "Unknown",
                 ),
-                "departure_airport": origin.strip().upper(),
-                "arrival_airport": destination.strip().upper(),
+                "departure_airport": normalized_origin,
+                "arrival_airport": normalized_destination,
                 "departure_time": _parse_str(
                     getattr(flight, "departure", None)
                     or getattr(flight, "departure_time", None)
@@ -237,16 +286,28 @@ def flights_finder(
                 "delay": _parse_str(getattr(flight, "delay", None), ""),
                 "price_level": price_level,
             }
+
+            if max_budget is not None and flight_info["price"] > max_budget:
+                continue
             flights_data.append(flight_info)
 
     if not flights_data:
-        return json.dumps({
-            "type": "no_flights_found",
-            "message": f"No flights found from {origin.strip().upper()} to {destination.strip().upper()} on {departure_date}",
-            "search_parameters": _search_parameters_payload(
-                origin, destination, departure_date, return_date
-            ),
-        }, indent=2)
+        return json.dumps(
+            {
+                "type": "no_flights_found",
+                "message": (
+                    f"No flights found from {normalized_origin} to {normalized_destination} "
+                    f"on {normalized_departure_date}"
+                ),
+                "search_parameters": _search_parameters_payload(
+                    normalized_origin,
+                    normalized_destination,
+                    normalized_departure_date,
+                    normalized_return_date,
+                ),
+            },
+            indent=2,
+        )
 
     ranked_flights = sorted(flights_data, key=_flight_score)[:3]
     for index, flight in enumerate(ranked_flights, start=1):
@@ -256,19 +317,19 @@ def flights_finder(
     answer = interrupt(
         {
             "type": "select_flight",
-            "prompt": f"I found the top 3 flight options from {origin.strip().upper()} to {destination.strip().upper()}. Please select your preferred flight.",
+            "prompt": f"I found the top 3 flight options from {normalized_origin} to {normalized_destination}. Please select your preferred flight.",
             "flight_options": ranked_flights,
             "options_count": len(ranked_flights),
             "flights": ranked_flights,
             "search_params": {
-                "origin": origin.strip().upper(),
-                "destination": destination.strip().upper(),
-                "departure_date": departure_date,
-                "return_date": return_date,
+                "origin": normalized_origin,
+                "destination": normalized_destination,
+                "departure_date": normalized_departure_date,
+                "return_date": normalized_return_date,
                 "adults": normalized_adults,
                 "travel_class": normalized_travel_class,
                 "trip_type": trip_type,
-                "currency": currency,
+                "currency": normalized_currency,
             },
             "price_info": {
                 "current_price": _parse_str(result.current_price, ""),

@@ -16,26 +16,41 @@ def ask_human(
     questions: Optional[List[AskHumanQuestion]] = None,
 ) -> str:
     """Ask one or more clarifying questions and wait for the human answers."""
+    if questions is not None and not isinstance(questions, list):
+        raise TypeError("`questions` must be a list when provided.")
+    if choices is not None and not isinstance(choices, list):
+        raise TypeError("`choices` must be a list when provided.")
+
     normalized_questions: List[AskHumanQuestion] = []
 
     if questions:
         for idx, q in enumerate(questions):
+            if not isinstance(q, dict):
+                continue
             q_text = (q.get("question") or "").strip()
             if not q_text:
                 continue
+            choices_value = q.get("choices", [])
+            if choices_value is None:
+                choices_value = []
+            if not isinstance(choices_value, list):
+                raise TypeError("`choices` for each question must be a list of strings.")
+
             normalized_questions.append(
                 {
                     "id": q.get("id") or f"q{idx + 1}",
                     "question": q_text,
-                    "choices": list(q.get("choices") or []),
+                    "choices": [str(item) for item in list(choices_value)],
                 }
             )
     elif question and question.strip():
+        if choices is not None and not isinstance(choices, list):
+            raise TypeError("`choices` must be a list when provided.")
         normalized_questions.append(
             {
                 "id": "q1",
                 "question": question.strip(),
-                "choices": list(choices or []),
+                "choices": [str(item) for item in (choices or [])],
             }
         )
     else:
